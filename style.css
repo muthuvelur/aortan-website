@@ -17,16 +17,42 @@ body {
 }
 
 header.site-header {
-  background: var(--teal);
-  text-align: center;
-  line-height: 0;
+  background: linear-gradient(120deg, var(--teal), var(--teal-dark));
+  color: #fff;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
 }
 
-header.site-header img.banner {
-  width: 100%;
-  max-width: 1088px;
-  height: auto;
-  display: inline-block;
+header.site-header .logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid var(--gold);
+  background: #fff;
+}
+
+header.site-header .title-block h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: 1px;
+}
+
+header.site-header .title-block p {
+  margin: 2px 0 0;
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+
+header.site-header .tamil-line {
+  margin-left: auto;
+  font-size: 1.05rem;
+  text-align: right;
+  opacity: 0.95;
 }
 
 nav.site-nav {
