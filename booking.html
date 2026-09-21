@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Tickets | AORTAN</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="images/logo-cutout.png" type="image/png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <img src="images/logo-cutout.png" alt="AORTAN logo" class="logo">
+  <div class="title-block">
+    <h1>AORTAN</h1>
+    <p>Association of Overseas Residents of Tamil Nadu</p>
+  </div>
+  <div class="tamil-line">அயல்நாடு வாழ் தமிழ் நாட்டினர் சங்கம்</div>
+</header>
+<nav class="site-nav">
+  <ul>
+    <li><a href="index.html">Home</a></li>
+    <li><a href="about.html">About Us</a></li>
+    <li><a href="events.html">Past Events</a></li>
+    <li><a href="gallery.html">Photos &amp; Videos</a></li>
+    <li><a href="resources.html">Tamil Resources</a></li>
+    <li><a href="contact.html">Contact Us</a></li>
+  </ul>
+</nav>
+<main>
+  <div id="demoBanner" class="notice" hidden>
+    <strong>Demo mode.</strong> Nothing you enter here is saved and no email is sent. The bank details shown are placeholders.
+  </div>
+
+  <h2 id="eventTitle">Book tickets</h2>
+  <p id="eventMeta" class="event-meta"></p>
+
+  <div id="closedMsg" class="notice" hidden></div>
+
+  <form id="bookingForm" class="card booking-form" novalidate hidden>
+    <h3>1. Your details</h3>
+    <div class="field">
+      <label for="name">Full name</label>
+      <input id="name" type="text" autocomplete="name" placeholder="First name Surname" required>
+    </div>
+    <div class="field">
+      <label for="email">Email <span class="hint">(your confirmation is sent here)</span></label>
+      <input id="email" type="email" autocomplete="email" required>
+    </div>
+    <div class="field">
+      <label for="mobile">Mobile number</label>
+      <input id="mobile" type="tel" autocomplete="tel" placeholder="07777123456" required>
+    </div>
+
+    <h3>2. Tickets</h3>
+    <div id="ticketRows"></div>
+
+    <h3>3. Food</h3>
+    <div class="ticket-row">
+      <label for="veg">How many people need <strong>vegetarian</strong> food?</label>
+      <select id="veg"></select>
+    </div>
+    <p class="hint">Non-vegetarian: <strong id="nonVeg">0</strong> (everyone else)</p>
+
+    <div class="total-box" aria-live="polite">
+      <div><span id="totalPeople">0</span> people</div>
+      <div class="total-amount">Total to pay: <strong id="totalAmount">£0</strong></div>
+    </div>
+
+    <div class="field consent">
+      <label><input id="consent" type="checkbox"> I agree that AORTAN may use these details to manage my booking and contact me about it.</label>
+    </div>
+    <div class="hp" aria-hidden="true"><label>Leave this empty <input id="website" type="text" tabindex="-1" autocomplete="off"></label></div>
+
+    <p id="formError" class="form-error" role="alert" hidden></p>
+    <button id="submitBtn" type="submit" class="btn">Get my payment reference</button>
+    <p class="hint">You will pay by bank transfer in the next step. Please book only once.</p>
+  </form>
+
+  <section id="resultPanel" class="card result-panel" hidden>
+    <h3>Booking received - now please pay</h3>
+    <p id="dupNote" class="notice" hidden>You have already booked with these details, so here is your existing reference. No new booking was made.</p>
+    <p>Your places are confirmed once we receive your payment.</p>
+
+    <div class="ref-box">
+      <div class="ref-label">Your payment reference</div>
+      <div id="refValue" class="ref-value"></div>
+      <button id="copyBtn" type="button" class="btn small">Copy reference</button>
+    </div>
+
+    <table class="pay-table">
+      <tr><th>Amount to pay</th><td id="resAmount"></td></tr>
+      <tr><th>Account name</th><td id="bankName"></td></tr>
+      <tr><th>Sort code</th><td id="bankSort"></td></tr>
+      <tr><th>Account number</th><td id="bankAcc"></td></tr>
+      <tr><th>Reference</th><td id="refValue2"></td></tr>
+    </table>
+
+    <ol class="steps">
+      <li>Open your banking app and make a payment to the account above.</li>
+      <li>Pay the <strong>exact amount</strong> and type the reference <strong>exactly</strong> as shown (not your mobile number).</li>
+      <li>Please pay within <span id="payDays">3</span> days. Unpaid bookings may be released.</li>
+    </ol>
+    <p id="emailNote" class="hint"></p>
+    <p class="hint">Tip: take a screenshot of this page so you have the reference.</p>
+    <button id="newBtn" type="button" class="btn small secondary">Make another booking</button>
+  </section>
+</main>
+<footer class="site-footer">
+  &copy; 2009&ndash;2026 AORTAN. All rights reserved. | <a href="mailto:aortanbirmingham@gmail.com">aortanbirmingham@gmail.com</a>
+</footer>
+<script src="booking-config.js"></script>
+<script src="booking.js"></script>
+</body>
+</html>
