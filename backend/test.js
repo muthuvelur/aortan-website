@@ -351,4 +351,8 @@ test('two organisations can run different events from one script code', () => {
   assert(!mail.body.includes('AORTAN') && !mail.body.includes('Pongal'));
 });
 
+test('a script not attached to a Sheet says so in plain English', () => {
+  assert.throws(() => T.ss_(), /not attached to a Google Sheet.*Extensions > Apps Script/);
+});
+
 console.log('\n' + passed + ' tests passed');
