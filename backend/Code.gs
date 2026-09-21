@@ -569,7 +569,9 @@ function createBooking_(input) {
 // ---------- sheet access ----------
 
 function ss_() {
-  return DEFAULTS.spreadsheetId ? SpreadsheetApp.openById(DEFAULTS.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet();
+  const ss = DEFAULTS.spreadsheetId ? SpreadsheetApp.openById(DEFAULTS.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('This script is not attached to a Google Sheet. Close this window, open your Google Sheet, choose Extensions > Apps Script, and paste the code there.');
+  return ss;
 }
 
 function getBookingsSheet_() {

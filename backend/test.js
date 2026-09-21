@@ -8,7 +8,7 @@ const code = fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8');
 const T = vm.runInNewContext(code + `
 ;({ CONFIG, DEFAULTS, SETTING_DEFS, REF_BLOCKED, schema_, colLetter_, safeCell_, normaliseMobile_, validateBooking_,
    generateReference_, findDuplicate_, parseAmount_, matchPayments_, deriveStatus_, computeSummary_,
-   buildConfirmationEmail_, parseSettings_ })`, {});
+   buildConfirmationEmail_, parseSettings_, ss_ })`, { SpreadsheetApp: { getActiveSpreadsheet: () => null } });
 
 const plain = (x) => JSON.parse(JSON.stringify(x));
 let passed = 0;
