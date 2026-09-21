@@ -1,18 +1,34 @@
 (function () {
   'use strict';
 
-  var BACKEND = String(window.BOOKING_BACKEND_URL || '').trim();
-  var DEMO = !BACKEND;
+  // ---- which organisation's booking is this? ----
+  var params = new URLSearchParams(window.location.search);
+  var orgKey = (params.get('org') || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  var BACKENDS = window.BOOKING_BACKENDS || {};
+  var BACKEND = orgKey
+    ? (Object.prototype.hasOwnProperty.call(BACKENDS, orgKey) ? String(BACKENDS[orgKey]).trim() : '')
+    : String(window.BOOKING_BACKEND_URL || '').trim();
+  var UNKNOWN_ORG = !!orgKey && !BACKEND;
+  var DEMO = !BACKEND && !UNKNOWN_ORG;
+
   var CONSONANTS = 'BDGKLMNPRSTV';
   var VOWELS = 'AEIOU';
 
   var DEMO_CONFIG = {
     ok: true,
     organiser: 'AORTAN',
+    tagline: 'Association of Overseas Residents of Tamil Nadu',
+    tagline2: 'அயல்நாடு வாழ் தமிழ் நாட்டினர் சங்கம்',
+    logoUrl: 'images/logo-cutout.png',
+    websiteUrl: 'https://aortan.org.uk',
+    headerColour: '',
+    buttonColour: '',
+    contactEmail: 'aortanbirmingham@gmail.com',
     eventName: 'Thamizhar Thirunal – Pongal 2027',
     dateText: 'Saturday, date to be confirmed, 2027 from 4 PM',
     venue: 'Walsall Football Club, Jimmy Walker Suite, Bescot Crescent, Walsall, WS1 4SA',
     open: true,
+    askFood: true,
     payWithinDays: 3,
     tickets: [
       { key: 'adult', label: 'Adult (25 and over)', price: 40, max: 10 },
@@ -28,6 +44,66 @@
   var copyValues = {};
 
   function money(n) { return '£' + (Number.isInteger(n) ? n : n.toFixed(2)); }
+  function isHttps(u) { return typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(u); }
+  function isHex(c) { return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c); }
+  function darken(hex, amount) {
+    var n = parseInt(hex.slice(1), 16), out = '#';
+    [n >> 16, (n >> 8) & 255, n & 255].forEach(function (v) {
+      var d = Math.round(v * (1 - amount)).toString(16);
+      out += (d.length < 2 ? '0' : '') + d;
+    });
+    return out;
+  }
+
+  // ---- branding comes from the organiser's Settings sheet ----
+  function applyBranding(cfg) {
+    var org = cfg.organiser || 'Tickets';
+    document.title = 'Book tickets | ' + org;
+    $('brandName').textContent = org;
+    $('brandTag').textContent = cfg.tagline || '';
+    $('brandTag').hidden = !cfg.tagline;
+    $('brandTag2').textContent = cfg.tagline2 || '';
+    $('brandTag2').hidden = !cfg.tagline2;
+
+    var logo = $('brandLogo');
+    var logoOk = cfg.logoUrl && (isHttps(cfg.logoUrl) || (DEMO && /^images\//.test(cfg.logoUrl)));
+    if (logoOk) {
+      logo.alt = org + ' logo';
+      logo.onerror = function () { logo.hidden = true; };
+      logo.src = cfg.logoUrl;
+      logo.hidden = false;
+      var icon = document.querySelector('link[rel="icon"]') || document.head.appendChild(document.createElement('link'));
+      icon.rel = 'icon';
+      icon.href = cfg.logoUrl;
+    } else {
+      logo.hidden = true;
+    }
+
+    var root = document.documentElement.style;
+    if (isHex(cfg.headerColour)) { root.setProperty('--teal', cfg.headerColour); root.setProperty('--teal-dark', darken(cfg.headerColour, 0.35)); }
+    if (isHex(cfg.buttonColour)) root.setProperty('--maroon', cfg.buttonColour);
+
+    var back = $('backLink');
+    if (isHttps(cfg.websiteUrl)) {
+      back.href = cfg.websiteUrl;
+      back.textContent = '← Back to the ' + org + ' website';
+      back.hidden = false;
+    }
+
+    $('consentText').textContent = 'I agree that ' + org + ' may use these details to manage my booking and contact me about it.';
+
+    var foot = $('siteFooter');
+    foot.textContent = '© ' + new Date().getFullYear() + ' ' + org;
+    if (cfg.contactEmail && /^[^\s@"<>]+@[^\s@"<>]+\.[^\s@"<>]+$/.test(cfg.contactEmail)) {
+      foot.appendChild(document.createTextNode(' | '));
+      var a = document.createElement('a');
+      a.href = 'mailto:' + cfg.contactEmail;
+      a.textContent = cfg.contactEmail;
+      foot.appendChild(a);
+    }
+  }
+
+  function askFood() { return !config || config.askFood !== false; }
 
   function fillSelect(sel, max, keep) {
     var current = keep ? Number(sel.value) || 0 : 0;
@@ -59,8 +135,10 @@
 
   function refresh() {
     var t = totals();
-    fillSelect($('veg'), t.people, true);
-    $('nonVeg').textContent = String(t.people - Number($('veg').value));
+    if (askFood()) {
+      fillSelect($('veg'), t.people, true);
+      $('nonVeg').textContent = String(t.people - Number($('veg').value));
+    }
     $('totalPeople').textContent = String(t.people);
     $('totalAmount').textContent = money(t.total);
   }
@@ -82,6 +160,7 @@
       row.appendChild(sel);
       box.appendChild(row);
     });
+    $('foodSection').hidden = !askFood();
     refresh();
   }
 
@@ -98,7 +177,7 @@
       email: $('email').value.trim(),
       mobile: $('mobile').value.trim(),
       counts: t.counts,
-      veg: Number($('veg').value) || 0,
+      veg: askFood() ? (Number($('veg').value) || 0) : 0,
       consent: $('consent').checked,
       website: $('website').value
     };
@@ -158,6 +237,8 @@
     $('resultPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  function userError(message) { var e = new Error(message); e.userMessage = message; return e; }
+
   function onSubmit(ev) {
     ev.preventDefault();
     if (busy) return;
@@ -169,10 +250,13 @@
     $('submitBtn').disabled = true;
     $('submitBtn').textContent = 'Please wait...';
     (DEMO ? demoBook(d) : post(d)).then(function (r) {
-      if (!r || !r.ok) throw new Error((r && r.error) || 'Something went wrong. Please try again.');
+      if (!r || !r.ok) throw userError('' + ((r && r.error) || 'Something went wrong. Please try again.'));
+      if (typeof r.reference !== 'string' || typeof r.total !== 'number' || !r.bank) {
+        throw userError('We received an unexpected reply from the booking system. Please try again, or contact the organiser before paying anything.');
+      }
       showResult(r);
     }).catch(function (e) {
-      showError(e.message && e.message !== 'Failed to fetch' ? e.message : 'We could not reach the booking system. Please check your connection and try again.');
+      showError(e && e.userMessage ? e.userMessage : 'We could not complete your booking. Please check your connection and try again.');
     }).then(function () {
       busy = false;
       $('submitBtn').disabled = false;
@@ -193,14 +277,21 @@
     }
   }
 
+  function showClosed(message) {
+    $('eventTitle').textContent = 'Book tickets';
+    $('closedMsg').textContent = message;
+    $('closedMsg').hidden = false;
+  }
+
   function start(cfg) {
     config = cfg;
+    applyBranding(cfg);
     $('eventTitle').textContent = cfg.eventName || 'Book tickets';
     $('eventMeta').textContent = [cfg.dateText, cfg.venue].filter(Boolean).join(' - ');
     $('demoBanner').hidden = !DEMO;
     if (!cfg.open) {
-      $('closedMsg').textContent = cfg.closedMessage || 'Bookings are closed.';
-      $('closedMsg').hidden = false;
+      showClosed(cfg.closedMessage || 'Bookings are closed.');
+      $('eventTitle').textContent = cfg.eventName || 'Book tickets';
       return;
     }
     buildForm();
@@ -222,12 +313,14 @@
     });
   }
 
-  if (DEMO) {
+  if (UNKNOWN_ORG) {
+    document.title = 'Book tickets';
+    showClosed('This booking link is not recognised. Please check the link you were given.');
+  } else if (DEMO) {
     start(DEMO_CONFIG);
   } else {
     fetch(BACKEND + '?action=config').then(function (r) { return r.json(); }).then(start).catch(function () {
-      $('closedMsg').textContent = 'The booking system is not available right now. Please try again later or email aortanbirmingham@gmail.com.';
-      $('closedMsg').hidden = false;
+      showClosed('The booking system is not available right now. Please try again later.');
     });
   }
 })();

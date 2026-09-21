@@ -240,7 +240,7 @@ test('sheet schema is consistent', () => {
 // ---------- Settings sheet ----------
 const goodVals = { organiser: 'Tamil Sangam', eventName: 'Diwali Night 2027', dateText: 'Sat 6 Nov, 6pm', venue: 'Town Hall',
   contactEmail: 'sangam@example.com', bankAccountName: 'TAMIL SANGAM', bankSortCode: '12 34 56', bankAccountNumber: '12345678',
-  payWithinDays: '5', capacity: '250', bookingsOpen: 'Yes', closedMessage: '' };
+  payWithinDays: '5', capacity: '250', bookingsOpen: 'Yes', askFood: 'Yes', closedMessage: '' };
 const goodTickets = [['Adult', 25, 10], ['Child', '£12.50', ''], ['Under 5', 0, 4], ['', '', ''], ['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
 const settings = (v, t) => plain(T.parseSettings_(Object.assign({}, goodVals, v), t || goodTickets));
 
@@ -295,10 +295,60 @@ test('shipped example values pass the checks except the bank details', () => {
   const d = T.DEFAULTS;
   const vals = { organiser: d.organiser, eventName: d.eventName, dateText: d.dateText, venue: d.venue, contactEmail: d.contactEmail,
     bankAccountName: d.bank.accountName, bankSortCode: d.bank.sortCode, bankAccountNumber: d.bank.accountNumber,
-    payWithinDays: d.payWithinDays, capacity: d.capacity, bookingsOpen: 'Yes', closedMessage: d.closedMessage };
+    payWithinDays: d.payWithinDays, capacity: d.capacity, bookingsOpen: 'Yes', askFood: 'Yes', closedMessage: d.closedMessage,
+    tagline: d.tagline, tagline2: d.tagline2, logoUrl: d.logoUrl, websiteUrl: d.websiteUrl, headerColour: d.headerColour, buttonColour: d.buttonColour };
   const c = plain(T.parseSettings_(vals, d.tickets.map((t) => [t.label, t.price, t.max])));
   assert.strictEqual(c.problems.length, 1);
   assert.match(c.problems[0], /example/);
+});
+
+// ---------- price changes, other organisations, page look ----------
+test('changing this year\'s prices is just editing the ticket table', () => {
+  const lastYear = settings({}, [['Adult', 40, 10], ['Youth', 30, 10], ['Child', 20, 10]]);
+  const thisYear = settings({}, [['Adult', 45, 10], ['Youth', 35, 10], ['Child', 22.5, 10]]);
+  assert.deepStrictEqual(thisYear.problems, []);
+  const order = { name: 'Anu Raj', email: 'a@b.co', mobile: '07123456789', counts: { t1: 2, t2: 1, t3: 2 }, veg: 0, consent: true };
+  assert.strictEqual(T.validateBooking_(order, lastYear).value.total, 2 * 40 + 30 + 2 * 20);
+  assert.strictEqual(T.validateBooking_(order, thisYear).value.total, 2 * 45 + 35 + 2 * 22.5);
+});
+
+test('an event without a food question stores no food numbers and asks nothing', () => {
+  const c = settings({ askFood: 'No' });
+  assert.strictEqual(c.askFood, false);
+  const v = T.validateBooking_({ name: 'Anu Raj', email: 'a@b.co', mobile: '07123456789', counts: { t1: 2 }, veg: 99, consent: true }, c);
+  assert.deepStrictEqual(plain(v.errors), []);
+  assert.strictEqual(v.value.veg, 0);
+  assert.strictEqual(v.value.nonVeg, 0);
+  const b = Object.assign({ ref: 'RAKIM' }, v.value);
+  assert(!T.buildConfirmationEmail_(b, c).body.includes('Vegetarian'));
+  assert(!T.computeSummary_([], c).some((r) => /vegetarian/i.test(r[0])));
+});
+
+test('food question stays on by default', () => {
+  const b = Object.assign({ ref: 'RAKIM' }, T.validateBooking_(good, T.CONFIG).value);
+  assert(T.buildConfirmationEmail_(b, T.CONFIG).body.includes('Vegetarian: 2   Non-vegetarian: 3'));
+});
+
+test('page look settings are optional and validated', () => {
+  const ok = settings({ tagline: 'Friends of Sangam', logoUrl: 'https://example.org/logo.png', websiteUrl: 'https://example.org', headerColour: '#123ABC', buttonColour: '#8e1b1b' });
+  assert.deepStrictEqual(ok.problems, []);
+  assert.strictEqual(ok.logoUrl, 'https://example.org/logo.png');
+  assert.deepStrictEqual(settings({}).problems, []);
+  const has = (patch, re) => assert(settings(patch).problems.some((p) => re.test(p)), JSON.stringify(patch));
+  has({ logoUrl: 'http://example.org/logo.png' }, /logo web address.*https/);
+  has({ logoUrl: 'javascript:alert(1)' }, /logo web address/);
+  has({ websiteUrl: 'example.org' }, /your website.*https/);
+  has({ headerColour: 'red' }, /header colour/);
+  has({ buttonColour: '#12345' }, /button colour/);
+});
+
+test('two organisations can run different events from one script code', () => {
+  const a = settings({ organiser: 'AORTAN', eventName: 'Pongal 2027' }, [['Adult', 45, 10], ['Child', 22, 10], ['Under 5', 0, 5]]);
+  const b = settings({ organiser: 'Kerala Samajam', eventName: 'Onam 2027', bankAccountName: 'KERALA SAMAJAM', bankSortCode: '11-22-33', bankAccountNumber: '87654321', askFood: 'No' }, [['Member', 30, 6], ['Guest', 40, 6]]);
+  assert.deepStrictEqual([a.problems, b.problems], [[], []]);
+  const mail = T.buildConfirmationEmail_(Object.assign({ ref: 'MODAN', name: 'X Y', counts: { t1: 2 }, people: 2, veg: 0, nonVeg: 0, total: 60 }, {}), b);
+  ['Kerala Samajam', 'Onam 2027', '11-22-33', '87654321', 'Member x 2 = £60'].forEach((x) => assert(mail.body.includes(x) || mail.subject.includes(x), x));
+  assert(!mail.body.includes('AORTAN') && !mail.body.includes('Pongal'));
 });
 
 console.log('\n' + passed + ' tests passed');

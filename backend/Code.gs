@@ -17,6 +17,13 @@ const DEFAULTS = {
   payWithinDays: 3,
   capacity: 0,
   bookingsOpen: true,
+  askFood: true,
+  tagline: 'Association of Overseas Residents of Tamil Nadu',
+  tagline2: 'அயல்நாடு வாழ் தமிழ் நாட்டினர் சங்கம்',
+  logoUrl: 'https://aortan.org.uk/images/logo-cutout.png',
+  websiteUrl: 'https://aortan.org.uk',
+  headerColour: '',
+  buttonColour: '',
   closedMessage: 'Bookings are not open yet. Please check back soon.',
   spreadsheetId: '',
   problems: [],
@@ -43,7 +50,14 @@ const SETTING_DEFS = [
   { key: 'payWithinDays', label: 'Days to pay', help: 'Used in the reminder emails', type: 'int', min: 1, max: 60 },
   { key: 'capacity', label: 'Maximum people', help: '0 means no limit; otherwise bookings stop when full', type: 'int', min: 0, max: 100000 },
   { key: 'bookingsOpen', label: 'Bookings open?', help: 'Yes or No. Set to No to close bookings', type: 'yesno' },
+  { key: 'askFood', label: 'Ask about vegetarian food?', help: 'Yes or No. Choose No if food choice does not matter for your event', type: 'yesno' },
   { key: 'closedMessage', label: 'Message when closed', help: 'Shown on the page when bookings are closed', required: false },
+  { key: 'tagline', label: 'PAGE LOOK (optional): line under the name', help: 'e.g. Association of Overseas Residents of Tamil Nadu. Leave empty for none', required: false },
+  { key: 'tagline2', label: 'PAGE LOOK (optional): second line', help: 'Another short line, for example in another language', required: false },
+  { key: 'logoUrl', label: 'PAGE LOOK (optional): logo web address', help: 'A link starting https:// to your logo image (PNG or JPG). Leave empty for no logo', required: false, type: 'url' },
+  { key: 'websiteUrl', label: 'PAGE LOOK (optional): your website', help: 'A link starting https://. Adds a "Back to website" link on the page', required: false, type: 'url' },
+  { key: 'headerColour', label: 'PAGE LOOK (optional): header colour', help: 'Hex colour like #0d5c68. Leave empty for the default teal', required: false, type: 'colour' },
+  { key: 'buttonColour', label: 'PAGE LOOK (optional): button colour', help: 'Hex colour like #8e1b1b. Leave empty for the default maroon', required: false, type: 'colour' },
 ];
 const TICKET_ROWS = 8;
 
@@ -117,13 +131,14 @@ function validateBooking_(input, cfg) {
   });
   if (paying < 1) errors.push('Please choose at least one paid ticket.');
 
-  const veg = Number(input.veg || 0);
-  if (!Number.isInteger(veg) || veg < 0 || veg > people) errors.push('The vegetarian number cannot be more than the number of people.');
+  const askFood = cfg.askFood !== false;
+  const veg = askFood ? Number(input.veg || 0) : 0;
+  if (askFood && (!Number.isInteger(veg) || veg < 0 || veg > people)) errors.push('The vegetarian number cannot be more than the number of people.');
   if (input.consent !== true) errors.push('Please tick the box to confirm you agree to us using your details for this booking.');
 
   return {
     errors: errors,
-    value: { name: name, email: email, mobile: mobile, counts: counts, people: people, veg: veg, nonVeg: people - veg, total: round2_(total) },
+    value: { name: name, email: email, mobile: mobile, counts: counts, people: people, veg: veg, nonVeg: askFood ? people - veg : 0, total: round2_(total) },
   };
 }
 
@@ -239,8 +254,10 @@ function computeSummary_(bookings, cfg) {
     rows.push([t.label, sum(active, function (b) { return b.counts[t.key] || 0; }), sum(settled, function (b) { return b.counts[t.key] || 0; })]);
   });
   rows.push(['Total people', sum(active, function (b) { return b.people; }), sum(settled, function (b) { return b.people; })]);
-  rows.push(['Vegetarian', sum(active, function (b) { return b.veg; }), sum(settled, function (b) { return b.veg; })]);
-  rows.push(['Non-vegetarian', sum(active, function (b) { return b.nonVeg; }), sum(settled, function (b) { return b.nonVeg; })]);
+  if (cfg.askFood !== false) {
+    rows.push(['Vegetarian', sum(active, function (b) { return b.veg; }), sum(settled, function (b) { return b.veg; })]);
+    rows.push(['Non-vegetarian', sum(active, function (b) { return b.nonVeg; }), sum(settled, function (b) { return b.nonVeg; })]);
+  }
   rows.push(['Bookings', active.length, settled.length]);
   rows.push(['Money expected (£)', sum(active, function (b) { return b.total; }), sum(settled, function (b) { return b.total; })]);
   rows.push(['Money received (£)', sum(active, function (b) { return b.paidBank + b.paidManual; }), sum(settled, function (b) { return b.paidBank + b.paidManual; })]);
@@ -268,7 +285,7 @@ function buildConfirmationEmail_(b, cfg) {
     '',
     'YOUR BOOKING (' + b.people + ' people)',
   ].concat(ticketLines_(b, cfg), [
-    '  Vegetarian: ' + b.veg + '   Non-vegetarian: ' + b.nonVeg,
+    ...(cfg.askFood !== false ? ['  Vegetarian: ' + b.veg + '   Non-vegetarian: ' + b.nonVeg] : []),
     '',
     'TO CONFIRM YOUR PLACES, PLEASE PAY BY BANK TRANSFER WITHIN ' + cfg.payWithinDays + ' DAYS',
     '  Amount:         ' + money_(b.total),
@@ -347,6 +364,8 @@ function parseSettings_(vals, ticketRows) {
       v = blank(raw) ? '' : String(raw).trim();
       if (d.required && !v) problems.push('"' + d.label + '" is empty.');
       if (v && d.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) problems.push('"' + d.label + '" is not a valid email address.');
+      if (v && d.type === 'url' && !/^https:\/\/[^\s"'<>]+$/i.test(v)) problems.push('"' + d.label + '" must be a link starting with https://');
+      if (v && d.type === 'colour' && !/^#[0-9a-fA-F]{6}$/.test(v)) problems.push('"' + d.label + '" must look like #0d5c68 (a # then 6 letters or digits).');
       if (v && d.type === 'sortcode') {
         const digits = v.replace(/\D/g, '');
         if (digits.length !== 6) problems.push('"' + d.label + '" must have 6 digits.');
@@ -397,7 +416,9 @@ function seedSettings_(sheet) {
     organiser: DEFAULTS.organiser, eventName: DEFAULTS.eventName, dateText: DEFAULTS.dateText, venue: DEFAULTS.venue,
     contactEmail: DEFAULTS.contactEmail, bankAccountName: bank.accountName, bankSortCode: bank.sortCode,
     bankAccountNumber: bank.accountNumber, payWithinDays: DEFAULTS.payWithinDays, capacity: DEFAULTS.capacity,
-    bookingsOpen: DEFAULTS.bookingsOpen ? 'Yes' : 'No', closedMessage: DEFAULTS.closedMessage,
+    bookingsOpen: DEFAULTS.bookingsOpen ? 'Yes' : 'No', askFood: DEFAULTS.askFood ? 'Yes' : 'No', closedMessage: DEFAULTS.closedMessage,
+    tagline: DEFAULTS.tagline, tagline2: DEFAULTS.tagline2, logoUrl: DEFAULTS.logoUrl, websiteUrl: DEFAULTS.websiteUrl,
+    headerColour: DEFAULTS.headerColour, buttonColour: DEFAULTS.buttonColour,
   };
   sheet.getRange(1, 1, 1, 3).setValues([['Setting', 'Value', 'What to enter']]);
   sheet.getRange(2, 2, SETTING_DEFS.length, 1).setNumberFormat('@');
@@ -413,8 +434,19 @@ function seedSettings_(sheet) {
   sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#8e1b1b').setFontColor('#ffffff');
   sheet.setColumnWidth(1, 220); sheet.setColumnWidth(2, 300); sheet.setColumnWidth(3, 340);
   sheet.setColumnWidth(4, 30); sheet.setColumnWidth(5, 220); sheet.setColumnWidth(6, 90); sheet.setColumnWidth(7, 130);
-  const openRow = SETTING_DEFS.findIndex(function (d) { return d.key === 'bookingsOpen'; }) + 2;
-  sheet.getRange(openRow, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Yes', 'No'], true).build());
+  ['bookingsOpen', 'askFood'].forEach(function (key) {
+    const row = SETTING_DEFS.findIndex(function (d) { return d.key === key; }) + 2;
+    sheet.getRange(row, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Yes', 'No'], true).build());
+  });
+  const help = SETTING_DEFS.length + 4;
+  sheet.getRange(help, 1, 5, 1).setValues([
+    ['HOW TO USE THIS SHEET'],
+    ['To change a ticket price or add a ticket type: edit the Ticket table on the right. It applies straight away, no redeploy.'],
+    ['To close bookings: set "Bookings open?" to No. To stop selling when full: set "Maximum people".'],
+    ['Click the menu at the top, then "Check settings", to see anything that needs fixing.'],
+    ['Do not change ticket names after people have booked (the Bookings sheet columns follow them).'],
+  ]);
+  sheet.getRange(help, 1).setFontWeight('bold');
   sheet.setFrozenRows(1);
 }
 
@@ -463,6 +495,8 @@ function publicConfig_() {
     open: !CONFIG.problems.length && CONFIG.bookingsOpen && spacesLeft !== 0,
     closedMessage: CONFIG.problems.length ? 'Booking is not available yet. Please check back soon.' : (spacesLeft === 0 ? 'Sorry, this event is now fully booked.' : CONFIG.closedMessage),
     payWithinDays: CONFIG.payWithinDays, tickets: CONFIG.tickets, spacesLeft: spacesLeft,
+    askFood: CONFIG.askFood !== false, contactEmail: CONFIG.contactEmail, tagline: CONFIG.tagline || '', tagline2: CONFIG.tagline2 || '',
+    logoUrl: CONFIG.logoUrl || '', websiteUrl: CONFIG.websiteUrl || '', headerColour: CONFIG.headerColour || '', buttonColour: CONFIG.buttonColour || '',
   };
 }
 
