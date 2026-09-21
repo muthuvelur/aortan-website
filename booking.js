@@ -25,6 +25,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var config = null;
   var busy = false;
+  var copyValues = {};
 
   function money(n) { return '£' + (Number.isInteger(n) ? n : n.toFixed(2)); }
 
@@ -139,6 +140,13 @@
     $('bankSort').textContent = r.bank.sortCode;
     $('bankAcc').textContent = r.bank.accountNumber;
     $('payDays').textContent = String(r.payWithinDays);
+    copyValues = {
+      amount: Number(r.total).toFixed(2),
+      name: r.bank.accountName,
+      sort: String(r.bank.sortCode).replace(/\D/g, ''),
+      account: String(r.bank.accountNumber).replace(/\D/g, ''),
+      ref: r.reference
+    };
     $('dupNote').hidden = !r.duplicate;
     $('emailNote').textContent = DEMO
       ? 'In a real booking, this reference and the payment details are also emailed to you, so you can find them in your inbox any time.'
@@ -172,9 +180,9 @@
     });
   }
 
-  function copyRef() {
-    var text = $('refValue').textContent;
-    var done = function () { $('copyBtn').textContent = 'Copied'; setTimeout(function () { $('copyBtn').textContent = 'Copy reference'; }, 2000); };
+  function copyText(text, btn) {
+    var label = btn.textContent;
+    var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = label; }, 1800); };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(done, function () {});
     } else {
@@ -201,7 +209,10 @@
       $('nonVeg').textContent = String(totals().people - Number($('veg').value));
     });
     $('bookingForm').addEventListener('submit', onSubmit);
-    $('copyBtn').addEventListener('click', copyRef);
+    $('copyBtn').addEventListener('click', function () { copyText($('refValue').textContent, $('copyBtn')); });
+    Array.prototype.forEach.call(document.querySelectorAll('.copy-mini'), function (btn) {
+      btn.addEventListener('click', function () { copyText(copyValues[btn.getAttribute('data-copy')] || '', btn); });
+    });
     $('newBtn').addEventListener('click', function () {
       $('resultPanel').hidden = true;
       $('bookingForm').hidden = false;
