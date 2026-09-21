@@ -668,11 +668,23 @@ function onOpen() {
     .addToUi();
 }
 
+// Pop-ups only exist when a menu item is used inside the Sheet. When something is run from the code editor
+// there is no window, so the message goes to a toast in the Sheet and to the execution log instead.
+function getUi_() {
+  try { return SpreadsheetApp.getUi(); } catch (err) { return null; }
+}
+
+function notify_(title, message) {
+  const ui = getUi_();
+  if (ui) { ui.alert(title, message, ui.ButtonSet.OK); return; }
+  console.log(title + ': ' + message);
+  try { ss_().toast(message, title, 30); } catch (err) { /* log only */ }
+}
+
 function requireGoodSettings_() {
-  const ui = SpreadsheetApp.getUi();
   useSettings_();
   if (CONFIG.problems.length) {
-    ui.alert('Please fix these in the Settings tab first', '- ' + CONFIG.problems.join('\n- '), ui.ButtonSet.OK);
+    notify_('Please fix these in the Settings tab first', '- ' + CONFIG.problems.join('\n- '));
     return false;
   }
   return true;
@@ -682,38 +694,34 @@ function guard_(fn) {
   try {
     if (requireGoodSettings_()) fn();
   } catch (err) {
-    const ui = SpreadsheetApp.getUi();
-    ui.alert('Problem', String(err && err.message ? err.message : err), ui.ButtonSet.OK);
+    notify_('Problem', String(err && err.message ? err.message : err));
   }
 }
 
 function checkSettings() {
-  const ui = SpreadsheetApp.getUi();
   useSettings_();
-  if (CONFIG.problems.length) ui.alert('Please fix these in the Settings tab', '- ' + CONFIG.problems.join('\n- '), ui.ButtonSet.OK);
-  else ui.alert('Settings look good', CONFIG.eventName + '\n' + CONFIG.tickets.length + ' ticket types. Bookings are ' + (CONFIG.bookingsOpen ? 'OPEN' : 'CLOSED') + '.', ui.ButtonSet.OK);
+  if (CONFIG.problems.length) notify_('Please fix these in the Settings tab', '- ' + CONFIG.problems.join('\n- '));
+  else notify_('Settings look good', CONFIG.eventName + '\n' + CONFIG.tickets.length + ' ticket types. Bookings are ' + (CONFIG.bookingsOpen ? 'OPEN' : 'CLOSED') + '.');
 }
 
 function setup() {
-  const ui = SpreadsheetApp.getUi();
   const ss = ss_();
   if (!ss.getSheetByName('Settings')) {
     seedSettings_(ss.insertSheet('Settings', 0));
-    ui.alert('Settings sheet created', 'Fill in the Settings tab (your event, bank details and ticket types), then choose First-time setup again.', ui.ButtonSet.OK);
+    notify_('Settings sheet created', 'Fill in the Settings tab (your event, bank details and ticket types), then run setup again.');
     return;
   }
   guard_(function () {
     getBookingsSheet_();
     getBankSheet_();
     refreshSummary_();
-    ui.alert('Setup done', 'Sheets ready: Bookings, Bank and Summary. Next, deploy the web app (see README).', ui.ButtonSet.OK);
+    notify_('Setup done', 'Sheets ready: Bookings, Bank and Summary. Next, deploy the web app (see README).');
   });
 }
 
 function matchBankPayments() { guard_(matchBankPayments_); }
 
 function matchBankPayments_() {
-  const ui = SpreadsheetApp.getUi();
   const S = schema_();
   const sheet = getBookingsSheet_();
   const bank = getBankSheet_();
@@ -747,11 +755,12 @@ function matchBankPayments_() {
 
   const counts = { matched: 0, unmatched: 0 };
   m.results.forEach(function (r) { if (r.status === 'matched') counts.matched++; else if (r.status === 'unmatched') counts.unmatched++; });
-  ui.alert('Matched ' + counts.matched + ' payments to bookings.\n' + counts.unmatched + ' payments could not be matched - see the Result column on the Bank sheet.');
+  notify_('Bank payments matched', 'Matched ' + counts.matched + ' payments to bookings.\n' + counts.unmatched + ' payments could not be matched - see the Result column on the Bank sheet.');
 }
 
 function sendMailBatch_(label, filterFn, builderFn, stampKey) {
-  const ui = SpreadsheetApp.getUi();
+  const ui = getUi_();
+  if (!ui) { notify_(label, 'Please use the menu at the top of the Sheet for this (not the code editor), so you can confirm before emails are sent.'); return; }
   const S = schema_();
   const sheet = getBookingsSheet_();
   const list = readBookings_(sheet).filter(function (b) { return b.ref && !b[stampKey] && filterFn(b); });

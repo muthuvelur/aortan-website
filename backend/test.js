@@ -355,4 +355,26 @@ test('a script not attached to a Sheet says so in plain English', () => {
   assert.throws(() => T.ss_(), /not attached to a Google Sheet.*Extensions > Apps Script/);
 });
 
+test('running from the code editor (no pop-up window) uses a toast instead of crashing', () => {
+  const toasts = [];
+  const sandbox = { console: { log() {}, error() {} }, SpreadsheetApp: {
+    getUi() { throw new Error('Cannot call SpreadsheetApp.getUi() from this context.'); },
+    getActiveSpreadsheet: () => ({ toast: (m, t) => toasts.push([t, m]) }),
+  } };
+  const U = vm.runInNewContext(code + '\n;({ notify_ })', sandbox);
+  U.notify_('Setup done', 'Sheets ready');
+  assert.deepStrictEqual(plain(toasts), [['Setup done', 'Sheets ready']]);
+});
+
+test('from the Sheet menu a pop-up window is used', () => {
+  const alerts = [];
+  const sandbox = { console: { log() {}, error() {} }, SpreadsheetApp: {
+    getUi: () => ({ alert: (t, m) => alerts.push([t, m]), ButtonSet: { OK: 'OK' } }),
+    getActiveSpreadsheet: () => ({ toast() { throw new Error('should not toast'); } }),
+  } };
+  const U = vm.runInNewContext(code + '\n;({ notify_ })', sandbox);
+  U.notify_('Settings look good', 'All fine');
+  assert.deepStrictEqual(plain(alerts), [['Settings look good', 'All fine']]);
+});
+
 console.log('\n' + passed + ' tests passed');
