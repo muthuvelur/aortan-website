@@ -3,7 +3,8 @@
 
   var BACKEND = String(window.BOOKING_BACKEND_URL || '').trim();
   var DEMO = !BACKEND;
-  var ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  var CONSONANTS = 'BDGKLMNPRSTV';
+  var VOWELS = 'AEIOU';
 
   var DEMO_CONFIG = {
     ok: true,
@@ -113,8 +114,8 @@
   }
 
   function demoBook(d) {
-    var ref = 'AOR';
-    for (var i = 0; i < 5; i++) ref += ALPHABET.charAt(Math.floor(Math.random() * ALPHABET.length));
+    var pick = function (set) { return set.charAt(Math.floor(Math.random() * set.length)); };
+    var ref = pick(CONSONANTS) + pick(VOWELS) + pick(CONSONANTS) + pick(VOWELS) + pick(CONSONANTS);
     var t = totals();
     return Promise.resolve({
       ok: true, reference: ref, total: t.total, email: d.email, people: t.people, payWithinDays: config.payWithinDays,
@@ -139,9 +140,11 @@
     $('bankAcc').textContent = r.bank.accountNumber;
     $('payDays').textContent = String(r.payWithinDays);
     $('dupNote').hidden = !r.duplicate;
-    $('emailNote').textContent = r.emailSent === false
-      ? (DEMO ? '' : 'We could not send the confirmation email, so please keep a note of this reference.')
-      : 'We have also emailed these details to ' + r.email + '. Check your spam folder if it does not arrive.';
+    $('emailNote').textContent = DEMO
+      ? 'In a real booking, this reference and the payment details are also emailed to you, so you can find them in your inbox any time.'
+      : (r.emailSent === false
+        ? 'We could not send the confirmation email, so please keep a note of this reference (a screenshot is fine).'
+        : 'We have also emailed this reference and the payment details to ' + r.email + '. You can find them in your email any time. Check your spam folder if it does not arrive.');
     $('bookingForm').hidden = true;
     $('resultPanel').hidden = false;
     $('resultPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });

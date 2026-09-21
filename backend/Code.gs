@@ -2,22 +2,24 @@
  * Ticket booking backend for a Google Sheet (Google Apps Script).
  * Bookings arrive from booking.html, get a unique bank-transfer reference,
  * and the treasurer matches the bank statement to them from the sheet menu.
- * Setup steps are in README.md. Edit CONFIG each year.
+ * Everything an organiser changes lives in the "Settings" sheet, not in this code.
+ * Setup steps are in README.md.
  */
 
-const CONFIG = {
+// Example values used to fill the Settings sheet the first time. Not used once the sheet exists.
+const DEFAULTS = {
   organiser: 'AORTAN',
   eventName: 'Thamizhar Thirunal – Pongal 2027',
   dateText: 'Saturday, date to be confirmed, 2027 from 4 PM',
   venue: 'Walsall Football Club, Jimmy Walker Suite, Bescot Crescent, Walsall, WS1 4SA',
   contactEmail: 'aortanbirmingham@gmail.com',
   bank: { accountName: 'AORTAN', sortCode: '00-00-00', accountNumber: '00000000' },
-  refPrefix: 'AOR',
   payWithinDays: 3,
   capacity: 0,
   bookingsOpen: true,
   closedMessage: 'Bookings are not open yet. Please check back soon.',
   spreadsheetId: '',
+  problems: [],
   tickets: [
     { key: 'adult', label: 'Adult (25 and over)', price: 40, max: 10 },
     { key: 'youth', label: 'Ages 16 to 24', price: 30, max: 10 },
@@ -26,7 +28,32 @@ const CONFIG = {
   ],
 };
 
-const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+// The live settings, loaded from the Settings sheet at the start of every request (see useSettings_).
+let CONFIG = DEFAULTS;
+
+const SETTING_DEFS = [
+  { key: 'organiser', label: 'Organisation name', help: 'Shown in emails, e.g. AORTAN', required: true },
+  { key: 'eventName', label: 'Event name', help: 'e.g. Thamizhar Thirunal - Pongal 2027', required: true },
+  { key: 'dateText', label: 'Date and time', help: 'Free text, e.g. Saturday 30 January 2027, 4 PM', required: true },
+  { key: 'venue', label: 'Venue', help: 'Name and address', required: true },
+  { key: 'contactEmail', label: 'Contact email', help: 'Replies to booking emails go here', required: true, type: 'email' },
+  { key: 'bankAccountName', label: 'Bank account name', help: 'Exactly as the bank shows it', required: true },
+  { key: 'bankSortCode', label: 'Bank sort code', help: '6 digits, e.g. 12-34-56', required: true, type: 'sortcode' },
+  { key: 'bankAccountNumber', label: 'Bank account number', help: '8 digits', required: true, type: 'account' },
+  { key: 'payWithinDays', label: 'Days to pay', help: 'Used in the reminder emails', type: 'int', min: 1, max: 60 },
+  { key: 'capacity', label: 'Maximum people', help: '0 means no limit; otherwise bookings stop when full', type: 'int', min: 0, max: 100000 },
+  { key: 'bookingsOpen', label: 'Bookings open?', help: 'Yes or No. Set to No to close bookings', type: 'yesno' },
+  { key: 'closedMessage', label: 'Message when closed', help: 'Shown on the page when bookings are closed', required: false },
+];
+const TICKET_ROWS = 8;
+
+// References are 5 letters shaped like a name (consonant-vowel-consonant-vowel-consonant), e.g. RAKIM,
+// easy to say, read and type. Words that could be rude, or that appear in bank statements, are never issued.
+const REF_CONSONANTS = 'BDGKLMNPRSTV';
+const REF_VOWELS = 'AEIOU';
+const REF_BLOCKED = ['PENIS', 'BONER', 'SEMEN', 'NIGER', 'PAKIS', 'KIKES', 'DAGOS', 'PUTAS', 'GONAD', 'TITUS',
+  'DEBIT', 'TOTAL', 'LEGAL', 'LEVEL', 'MODEL', 'METAL', 'TIMES', 'RATES', 'SALES', 'DATES', 'TAXES', 'BASIS',
+  'SAVER', 'BONUS', 'SUPER', 'MOTOR', 'LOGIN', 'TAMIL', 'KUMAR'];
 
 // ---------- pure helpers (unit tested in test.js) ----------
 
@@ -100,13 +127,12 @@ function validateBooking_(input, cfg) {
   };
 }
 
-function generateReference_(prefix, existing, rnd) {
+function generateReference_(existing, rnd) {
   rnd = rnd || Math.random;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    let s = '';
-    for (let i = 0; i < 5; i++) s += ALPHABET.charAt(Math.floor(rnd() * ALPHABET.length));
-    const ref = prefix + s;
-    if (!existing[ref]) return ref;
+  const pick = function (chars) { return chars.charAt(Math.floor(rnd() * chars.length)); };
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const ref = pick(REF_CONSONANTS) + pick(REF_VOWELS) + pick(REF_CONSONANTS) + pick(REF_VOWELS) + pick(REF_CONSONANTS);
+    if (!existing[ref] && REF_BLOCKED.indexOf(ref) === -1) return ref;
   }
   throw new Error('Could not generate a unique reference');
 }
@@ -128,15 +154,13 @@ function findDuplicate_(bookings, b, nowMs) {
   return null;
 }
 
-function norm_(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
-
 function parseAmount_(v) {
   if (typeof v === 'number') return v;
   const n = parseFloat(String(v || '').replace(/[£,\s]/g, ''));
   return isNaN(n) ? 0 : n;
 }
 
-function matchPayments_(bookings, rows, prefix) {
+function matchPayments_(bookings, rows) {
   const live = bookings.filter(function (b) { return b.ref; });
   const byRef = {};
   live.forEach(function (b) { byRef[b.ref] = b; });
@@ -145,33 +169,48 @@ function matchPayments_(bookings, rows, prefix) {
     const k = last10_(b.mobile);
     if (k) (byMobile[k] = byMobile[k] || []).push(b);
   });
-  const re = new RegExp(prefix + '[' + ALPHABET + ']{5}', 'g');
   const results = [];
   const paid = {};
 
+  // References look like names, so a payer's own name in the bank text could equal someone's reference.
+  // A match is therefore only accepted when the amount is what that booking owes (its total, or what is left).
+  const fits = function (b, amount) {
+    const left = round2_(b.total - (paid[b.ref] || 0) - (b.paidManual || 0));
+    return Math.abs(amount - b.total) < 0.005 || (left > 0 && Math.abs(amount - left) < 0.005);
+  };
+
   rows.forEach(function (r) {
     if (!(r.amount > 0)) { results.push({ status: 'skip', text: '', ref: '' }); return; }
-    let ref = null, how = '';
-    const found = norm_(r.desc).match(re) || [];
-    for (let i = 0; i < found.length; i++) { if (byRef[found[i]]) { ref = found[i]; how = 'reference'; break; } }
+    let ref = null, how = '', loose = null;
+    const tokens = String(r.desc || '').toUpperCase().split(/[^A-Z0-9]+/);
+    for (let i = 0; i < tokens.length && !ref; i++) {
+      const b = tokens[i] ? byRef[tokens[i]] : null;
+      if (!b) continue;
+      if (fits(b, r.amount)) { ref = b.ref; how = 'reference'; } else if (!loose) loose = b;
+    }
     if (!ref) {
       const digits = String(r.desc || '').replace(/\D/g, '');
       const cands = [];
       Object.keys(byMobile).forEach(function (k) {
         if (digits.indexOf(k) !== -1) byMobile[k].forEach(function (b) { cands.push(b); });
       });
-      if (cands.length === 1) { ref = cands[0].ref; how = 'mobile number in reference (check)'; }
+      if (cands.length === 1) {
+        if (fits(cands[0], r.amount)) { ref = cands[0].ref; how = 'mobile number (check)'; } else if (!loose) loose = cands[0];
+      }
     }
     if (ref) {
       paid[ref] = round2_((paid[ref] || 0) + r.amount);
       results.push({ status: 'matched', ref: ref, text: 'Matched by ' + how });
+    } else if (loose) {
+      results.push({ status: 'unmatched', ref: '', text: 'NOT MATCHED. ' + loose.ref + ' (' + loose.name + ') is mentioned but ' + money_(r.amount) +
+        ' is not the ' + money_(loose.total) + ' they owe. If it is their payment, enter ' + r.amount + ' in Paid manually for ' + loose.ref + '.' });
     } else {
       results.push({ status: 'unmatched', ref: '', text: '' });
     }
   });
 
   results.forEach(function (res, i) {
-    if (res.status !== 'unmatched') return;
+    if (res.status !== 'unmatched' || res.text) return;
     const amount = rows[i].amount;
     const cands = live.filter(function (b) { return b.status !== 'Cancelled' && !paid[b.ref] && round2_(b.total) === round2_(amount); });
     if (cands.length === 1) res.text = 'NOT MATCHED. Possible: ' + cands[0].ref + ' (' + cands[0].name + ', same amount). Check before accepting.';
@@ -239,6 +278,7 @@ function buildConfirmationEmail_(b, cfg) {
     '  PAYMENT REFERENCE: ' + b.ref,
     '',
     'Please use exactly this reference (not your mobile number) and pay the exact amount.',
+    'Keep this email: your reference is always here if you need it again.',
     'Your booking is only confirmed once we receive payment. Unpaid bookings may be released.',
     'Please do not fill in the booking form a second time.',
     '',
@@ -283,6 +323,116 @@ function buildReminderEmail_(b, cfg) {
   return { subject: cfg.organiser + ' - payment reminder (' + b.ref + ')', body: body.join('\n') };
 }
 
+// ---------- settings sheet ----------
+
+function parseSettings_(vals, ticketRows) {
+  const problems = [];
+  const cfg = {};
+  const blank = function (v) { return v === undefined || v === null || String(v).trim() === ''; };
+
+  SETTING_DEFS.forEach(function (d) {
+    const raw = vals[d.key];
+    let v;
+    if (d.type === 'int') {
+      v = Number(String(raw).trim());
+      if (blank(raw) || !Number.isInteger(v) || v < d.min || v > d.max) {
+        problems.push('"' + d.label + '" must be a whole number from ' + d.min + ' to ' + d.max + '.');
+        v = d.min;
+      }
+    } else if (d.type === 'yesno') {
+      const t = blank(raw) ? '' : String(raw).trim().toLowerCase();
+      if (t !== 'yes' && t !== 'no') problems.push('"' + d.label + '" must be Yes or No.');
+      v = t === 'yes';
+    } else {
+      v = blank(raw) ? '' : String(raw).trim();
+      if (d.required && !v) problems.push('"' + d.label + '" is empty.');
+      if (v && d.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) problems.push('"' + d.label + '" is not a valid email address.');
+      if (v && d.type === 'sortcode') {
+        const digits = v.replace(/\D/g, '');
+        if (digits.length !== 6) problems.push('"' + d.label + '" must have 6 digits.');
+        else v = digits.slice(0, 2) + '-' + digits.slice(2, 4) + '-' + digits.slice(4);
+      }
+      if (v && d.type === 'account') {
+        const digits = v.replace(/\D/g, '');
+        if (digits.length !== 8) problems.push('"' + d.label + '" must have 8 digits.');
+        else v = digits;
+      }
+    }
+    cfg[d.key] = v;
+  });
+
+  cfg.bank = { accountName: cfg.bankAccountName, sortCode: cfg.bankSortCode, accountNumber: cfg.bankAccountNumber };
+  if (/^0+(-0+)*$/.test(cfg.bankSortCode) || /^0+$/.test(cfg.bankAccountNumber)) {
+    problems.push('The bank details are still the example ones. Enter your real sort code and account number.');
+  }
+
+  const tickets = [];
+  const seen = {};
+  (ticketRows || []).forEach(function (r, i) {
+    const label = blank(r[0]) ? '' : String(r[0]).trim();
+    if (!label && blank(r[1]) && blank(r[2])) return;
+    if (!label) { problems.push('Ticket row ' + (i + 1) + ' has a price but no name.'); return; }
+    const priceText = String(r[1] === undefined || r[1] === null ? '' : r[1]).replace(/[£,\s]/g, '');
+    const price = Number(priceText);
+    if (priceText === '' || isNaN(price) || price < 0 || price > 1000) {
+      problems.push('Ticket "' + label + '" needs a price from 0 to 1000 (use 0 for free).');
+      return;
+    }
+    const max = blank(r[2]) ? 10 : Number(r[2]);
+    if (!Number.isInteger(max) || max < 1 || max > 50) { problems.push('Ticket "' + label + '": max per booking must be a whole number from 1 to 50.'); return; }
+    if (seen[label.toLowerCase()]) { problems.push('Ticket name "' + label + '" is used twice.'); return; }
+    seen[label.toLowerCase()] = true;
+    tickets.push({ key: 't' + (tickets.length + 1), label: label, price: round2_(price), max: max });
+  });
+  if (!tickets.length) problems.push('Add at least one ticket type in the Ticket table.');
+  else if (!tickets.some(function (t) { return t.price > 0; })) problems.push('At least one ticket type must have a price above 0.');
+  cfg.tickets = tickets;
+  cfg.problems = problems;
+  return cfg;
+}
+
+function seedSettings_(sheet) {
+  const bank = DEFAULTS.bank;
+  const seed = {
+    organiser: DEFAULTS.organiser, eventName: DEFAULTS.eventName, dateText: DEFAULTS.dateText, venue: DEFAULTS.venue,
+    contactEmail: DEFAULTS.contactEmail, bankAccountName: bank.accountName, bankSortCode: bank.sortCode,
+    bankAccountNumber: bank.accountNumber, payWithinDays: DEFAULTS.payWithinDays, capacity: DEFAULTS.capacity,
+    bookingsOpen: DEFAULTS.bookingsOpen ? 'Yes' : 'No', closedMessage: DEFAULTS.closedMessage,
+  };
+  sheet.getRange(1, 1, 1, 3).setValues([['Setting', 'Value', 'What to enter']]);
+  sheet.getRange(2, 2, SETTING_DEFS.length, 1).setNumberFormat('@');
+  sheet.getRange(2, 1, SETTING_DEFS.length, 3).setValues(SETTING_DEFS.map(function (d) { return [d.label, seed[d.key], d.help]; }));
+  sheet.getRange(1, 5, 1, 3).setValues([['Ticket type', 'Price (£)', 'Max per booking']]);
+  const rows = [];
+  for (let i = 0; i < TICKET_ROWS; i++) {
+    const t = DEFAULTS.tickets[i];
+    rows.push(t ? [t.label, t.price, t.max] : ['', '', '']);
+  }
+  sheet.getRange(2, 5, TICKET_ROWS, 3).setValues(rows);
+  sheet.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground('#0d5c68').setFontColor('#ffffff');
+  sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#8e1b1b').setFontColor('#ffffff');
+  sheet.setColumnWidth(1, 220); sheet.setColumnWidth(2, 300); sheet.setColumnWidth(3, 340);
+  sheet.setColumnWidth(4, 30); sheet.setColumnWidth(5, 220); sheet.setColumnWidth(6, 90); sheet.setColumnWidth(7, 130);
+  const openRow = SETTING_DEFS.findIndex(function (d) { return d.key === 'bookingsOpen'; }) + 2;
+  sheet.getRange(openRow, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Yes', 'No'], true).build());
+  sheet.setFrozenRows(1);
+}
+
+function readSettings_() {
+  const sheet = ss_().getSheetByName('Settings');
+  if (!sheet) {
+    const c = JSON.parse(JSON.stringify(DEFAULTS));
+    c.problems = ['The Settings sheet has not been created yet. Run First-time setup.'];
+    return c;
+  }
+  const rows = sheet.getRange(2, 1, SETTING_DEFS.length, 2).getValues();
+  const vals = {};
+  SETTING_DEFS.forEach(function (d, i) { vals[d.key] = rows[i][1]; });
+  return parseSettings_(vals, sheet.getRange(2, 5, TICKET_ROWS, 3).getValues());
+}
+
+function useSettings_() { CONFIG = readSettings_(); return CONFIG; }
+
 // ---------- web endpoints ----------
 
 function json_(obj) {
@@ -290,8 +440,14 @@ function json_(obj) {
 }
 
 function doGet(e) {
+  useSettings_();
   const action = e && e.parameter && e.parameter.action;
-  if (action === 'config') return json_(publicConfig_());
+  if (action === 'config') {
+    try { return json_(publicConfig_()); } catch (err) {
+      console.error(err);
+      return json_({ ok: true, open: false, tickets: [], closedMessage: 'Booking is not available yet. Please check back soon.' });
+    }
+  }
   return json_({ ok: true, service: CONFIG.organiser + ' bookings' });
 }
 
@@ -304,7 +460,8 @@ function publicConfig_() {
   }
   return {
     ok: true, organiser: CONFIG.organiser, eventName: CONFIG.eventName, dateText: CONFIG.dateText, venue: CONFIG.venue,
-    open: CONFIG.bookingsOpen && spacesLeft !== 0, closedMessage: spacesLeft === 0 ? 'Sorry, this event is now fully booked.' : CONFIG.closedMessage,
+    open: !CONFIG.problems.length && CONFIG.bookingsOpen && spacesLeft !== 0,
+    closedMessage: CONFIG.problems.length ? 'Booking is not available yet. Please check back soon.' : (spacesLeft === 0 ? 'Sorry, this event is now fully booked.' : CONFIG.closedMessage),
     payWithinDays: CONFIG.payWithinDays, tickets: CONFIG.tickets, spacesLeft: spacesLeft,
   };
 }
@@ -313,6 +470,7 @@ function doPost(e) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(20000);
+    useSettings_();
     return json_(createBooking_(JSON.parse(e.postData.contents)));
   } catch (err) {
     console.error(err);
@@ -333,6 +491,7 @@ function bookingResponse_(b, extra) {
 
 function createBooking_(input) {
   if (input && input.website) return { ok: false, error: 'Rejected.' };
+  if (CONFIG.problems.length) { console.error(CONFIG.problems.join(' ')); return { ok: false, error: 'Booking is not available yet. Please check back soon.' }; }
   if (!CONFIG.bookingsOpen) return { ok: false, error: CONFIG.closedMessage };
 
   const v = validateBooking_(input, CONFIG);
@@ -353,7 +512,7 @@ function createBooking_(input) {
 
   const existing = {};
   bookings.forEach(function (x) { if (x.ref) existing[x.ref] = true; });
-  b.ref = generateReference_(CONFIG.refPrefix, existing);
+  b.ref = generateReference_(existing);
 
   const others = active.filter(function (x) {
     return String(x.email).toLowerCase() === b.email || (last10_(x.mobile) && last10_(x.mobile) === last10_(b.mobile));
@@ -376,13 +535,19 @@ function createBooking_(input) {
 // ---------- sheet access ----------
 
 function ss_() {
-  return CONFIG.spreadsheetId ? SpreadsheetApp.openById(CONFIG.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet();
+  return DEFAULTS.spreadsheetId ? SpreadsheetApp.openById(DEFAULTS.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet();
 }
 
 function getBookingsSheet_() {
   const ss = ss_();
   let sheet = ss.getSheetByName('Bookings');
-  if (!sheet) { sheet = ss.insertSheet('Bookings'); formatBookingsSheet_(sheet); }
+  if (!sheet) { sheet = ss.insertSheet('Bookings'); formatBookingsSheet_(sheet); return sheet; }
+  const S = schema_();
+  const have = sheet.getRange(1, 1, 1, S.headers.length).getValues()[0].map(String);
+  if (have.join('|') !== S.headers.join('|')) {
+    if (sheet.getLastRow() < 2) formatBookingsSheet_(sheet);
+    else throw new Error('The ticket types in Settings no longer match the Bookings sheet, which already has bookings. Put the ticket names back, or start a new copy of the sheet for the new event.');
+  }
   return sheet;
 }
 
@@ -395,6 +560,7 @@ function getBankSheet_() {
 
 function formatBookingsSheet_(sheet) {
   const S = schema_();
+  sheet.getRange(1, 1, 1, sheet.getMaxColumns()).clearContent();
   sheet.getRange(1, 1, 1, S.headers.length).setValues([S.headers]).setFontWeight('bold').setBackground('#0d5c68').setFontColor('#ffffff');
   sheet.setFrozenRows(1);
   sheet.getRange(2, S.idx.mobile, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
@@ -454,24 +620,63 @@ function appendBooking_(sheet, b) {
 // ---------- treasurer menu ----------
 
 function onOpen() {
+  try { useSettings_(); } catch (err) { /* menu still appears */ }
   SpreadsheetApp.getUi().createMenu(CONFIG.organiser + ' tickets')
     .addItem('1. Match bank payments', 'matchBankPayments')
     .addItem('2. Email "payment received" to newly paid', 'sendReceipts')
     .addItem('3. Email reminders to unpaid', 'sendReminders')
     .addItem('Refresh summary', 'refreshSummary')
     .addSeparator()
+    .addItem('Check settings', 'checkSettings')
     .addItem('First-time setup', 'setup')
     .addToUi();
 }
 
-function setup() {
-  getBookingsSheet_();
-  getBankSheet_();
-  refreshSummary();
-  SpreadsheetApp.getUi().alert('Setup done. Sheets created: Bookings, Bank, Summary.');
+function requireGoodSettings_() {
+  const ui = SpreadsheetApp.getUi();
+  useSettings_();
+  if (CONFIG.problems.length) {
+    ui.alert('Please fix these in the Settings tab first', '- ' + CONFIG.problems.join('\n- '), ui.ButtonSet.OK);
+    return false;
+  }
+  return true;
 }
 
-function matchBankPayments() {
+function guard_(fn) {
+  try {
+    if (requireGoodSettings_()) fn();
+  } catch (err) {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Problem', String(err && err.message ? err.message : err), ui.ButtonSet.OK);
+  }
+}
+
+function checkSettings() {
+  const ui = SpreadsheetApp.getUi();
+  useSettings_();
+  if (CONFIG.problems.length) ui.alert('Please fix these in the Settings tab', '- ' + CONFIG.problems.join('\n- '), ui.ButtonSet.OK);
+  else ui.alert('Settings look good', CONFIG.eventName + '\n' + CONFIG.tickets.length + ' ticket types. Bookings are ' + (CONFIG.bookingsOpen ? 'OPEN' : 'CLOSED') + '.', ui.ButtonSet.OK);
+}
+
+function setup() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = ss_();
+  if (!ss.getSheetByName('Settings')) {
+    seedSettings_(ss.insertSheet('Settings', 0));
+    ui.alert('Settings sheet created', 'Fill in the Settings tab (your event, bank details and ticket types), then choose First-time setup again.', ui.ButtonSet.OK);
+    return;
+  }
+  guard_(function () {
+    getBookingsSheet_();
+    getBankSheet_();
+    refreshSummary_();
+    ui.alert('Setup done', 'Sheets ready: Bookings, Bank and Summary. Next, deploy the web app (see README).', ui.ButtonSet.OK);
+  });
+}
+
+function matchBankPayments() { guard_(matchBankPayments_); }
+
+function matchBankPayments_() {
   const ui = SpreadsheetApp.getUi();
   const S = schema_();
   const sheet = getBookingsSheet_();
@@ -482,7 +687,7 @@ function matchBankPayments() {
     return { desc: String(r[1] || ''), amount: parseAmount_(r[2]) };
   }) : [];
 
-  const m = matchPayments_(bookings, rows, CONFIG.refPrefix);
+  const m = matchPayments_(bookings, rows);
 
   if (rows.length) {
     bank.getRange(2, 4, rows.length, 2).setValues(m.results.map(function (r) { return [r.text, r.ref]; }));
@@ -502,7 +707,7 @@ function matchBankPayments() {
     sheet.getRange(2, S.idx.status, bookings.length, 1).setValues(statusCol);
     sheet.getRange(2, S.idx.notes, bookings.length, 1).setValues(noteCol);
   }
-  refreshSummary();
+  refreshSummary_();
 
   const counts = { matched: 0, unmatched: 0 };
   m.results.forEach(function (r) { if (r.status === 'matched') counts.matched++; else if (r.status === 'unmatched') counts.unmatched++; });
@@ -530,17 +735,27 @@ function sendMailBatch_(label, filterFn, builderFn, stampKey) {
 }
 
 function sendReceipts() {
+  guard_(function () { sendReceipts_(); });
+}
+
+function sendReceipts_() {
   sendMailBatch_('Payment received emails', function (b) { return b.status === 'Paid' || b.status === 'Overpaid'; }, buildReceiptEmail_, 'receiptSent');
 }
 
 function sendReminders() {
+  guard_(function () { sendReminders_(); });
+}
+
+function sendReminders_() {
   const cutoff = Date.now() - CONFIG.payWithinDays * 24 * 60 * 60 * 1000;
   sendMailBatch_('Payment reminders', function (b) {
     return (b.status === 'Pending' || b.status === 'Part paid') && new Date(b.bookedAt).getTime() < cutoff;
   }, buildReminderEmail_, 'reminderSent');
 }
 
-function refreshSummary() {
+function refreshSummary() { guard_(refreshSummary_); }
+
+function refreshSummary_() {
   const ss = ss_();
   let sheet = ss.getSheetByName('Summary');
   if (!sheet) sheet = ss.insertSheet('Summary');

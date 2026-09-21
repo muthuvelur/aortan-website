@@ -6,8 +6,9 @@ const assert = require('assert');
 
 const code = fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8');
 const T = vm.runInNewContext(code + `
-;({ CONFIG, schema_, colLetter_, safeCell_, normaliseMobile_, validateBooking_, generateReference_, findDuplicate_,
-   parseAmount_, matchPayments_, deriveStatus_, computeSummary_, buildConfirmationEmail_, ALPHABET })`, {});
+;({ CONFIG, DEFAULTS, SETTING_DEFS, REF_BLOCKED, schema_, colLetter_, safeCell_, normaliseMobile_, validateBooking_,
+   generateReference_, findDuplicate_, parseAmount_, matchPayments_, deriveStatus_, computeSummary_,
+   buildConfirmationEmail_, parseSettings_ })`, {});
 
 const plain = (x) => JSON.parse(JSON.stringify(x));
 let passed = 0;
@@ -15,6 +16,7 @@ function test(name, fn) { fn(); passed++; console.log('ok  ' + name); }
 const good = { name: ' Priya  Kumar ', email: 'Priya@Example.com ', mobile: '+44 7700 900123',
   counts: { adult: 2, youth: 1, child: 1, infant: 1 }, veg: 2, consent: true };
 
+// ---------- bookings ----------
 test('valid booking is priced by the server and normalised', () => {
   const v = T.validateBooking_(good, T.CONFIG);
   assert.deepStrictEqual(plain(v.errors), []);
@@ -44,28 +46,49 @@ test('bad inputs are rejected', () => {
   assert(bad({ consent: false }));
 });
 
-test('references use the safe alphabet and are unique', () => {
+// ---------- references ----------
+test('references are 5 easy-to-type letters, name-shaped, and unique', () => {
   const existing = {};
-  for (let i = 0; i < 2000; i++) {
-    const r = T.generateReference_('AOR', existing);
-    assert(/^AOR[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/.test(r), r);
-    assert(!/[01OIL]/.test(r.slice(3)));
+  for (let i = 0; i < 3000; i++) {
+    const r = T.generateReference_(existing);
+    assert(/^[BDGKLMNPRSTV][AEIOU][BDGKLMNPRSTV][AEIOU][BDGKLMNPRSTV]$/.test(r), r);
     existing[r] = true;
   }
-  assert.strictEqual(Object.keys(existing).length, 2000);
+  assert.strictEqual(Object.keys(existing).length, 3000);
+});
+
+test('blocked words are never issued', () => {
+  const blocked = plain(T.REF_BLOCKED).filter((w) => /^[BDGKLMNPRSTV][AEIOU][BDGKLMNPRSTV][AEIOU][BDGKLMNPRSTV]$/.test(w));
+  assert(blocked.length >= 5, 'blocklist should contain reachable words');
+  for (const word of blocked) {
+    // force the generator to produce exactly this word first, then something else
+    const letters = word.split('');
+    const seq = [];
+    letters.forEach((ch, i) => {
+      const set = i % 2 === 0 ? 'BDGKLMNPRSTV' : 'AEIOU';
+      seq.push((set.indexOf(ch) + 0.5) / set.length);
+    });
+    let n = 0;
+    const rnd = () => (n < 5 ? seq[n++] : 0.99);
+    const r = T.generateReference_({}, rnd);
+    assert.notStrictEqual(r, word);
+  }
+});
+
+test('real bank words and common surnames are blocked', () => {
+  ['SAVER', 'DEBIT', 'TOTAL', 'KUMAR', 'TAMIL'].forEach((w) => assert(plain(T.REF_BLOCKED).includes(w), w));
 });
 
 test('reference generation retries on collision', () => {
   let calls = 0;
   const rnd = () => (calls++ < 5 ? 0 : 0.5);
-  const first = 'AOR' + 'AAAAA';
-  const r = T.generateReference_('AOR', { [first]: true }, rnd);
-  assert.notStrictEqual(r, first);
+  const r = T.generateReference_({ BABAB: true }, rnd);
+  assert.notStrictEqual(r, 'BABAB');
 });
 
 test('a double submit returns the existing booking', () => {
   const v = T.validateBooking_(good, T.CONFIG).value;
-  const existing = [{ ref: 'AOR22222', status: 'Pending', email: v.email, mobile: v.mobile, counts: v.counts, bookedAt: new Date(Date.now() - 60000) }];
+  const existing = [{ ref: 'RAKIM', status: 'Pending', email: v.email, mobile: v.mobile, counts: v.counts, bookedAt: new Date(Date.now() - 60000) }];
   assert(T.findDuplicate_(existing, v, Date.now()));
   assert.strictEqual(T.findDuplicate_([Object.assign({}, existing[0], { counts: { adult: 1 } })], v, Date.now()), null);
   assert.strictEqual(T.findDuplicate_([Object.assign({}, existing[0], { status: 'Cancelled' })], v, Date.now()), null);
@@ -83,30 +106,66 @@ test('column letters', () => {
   assert.strictEqual(T.colLetter_(27), 'AA');
 });
 
+// ---------- bank matching ----------
 const B = (ref, mobile, total, extra) => Object.assign({ ref, mobile, total, status: 'Pending', name: 'Name ' + ref, counts: {}, people: 1, veg: 0, nonVeg: 1, paidBank: 0, paidManual: 0 }, extra || {});
 const bookings = [
-  B('AOR7K3QP', '07700900111', 130), B('AORMMMMM', '07700900222', 40), B('AORNNNNN', '07700900333', 80),
-  B('AORPPPPP', '07700900444', 80), B('AORQQQQQ', '07700900555', 60, { status: 'Cancelled' }),
+  B('RAKIM', '07700900111', 130), B('MODAN', '07700900222', 40), B('NEGUS', '07700900333', 80),
+  B('POSIL', '07700900444', 80), B('TUBEK', '07700900555', 60, { status: 'Cancelled' }),
 ];
 const row = (desc, amount) => ({ desc, amount });
-const match = (rows) => T.matchPayments_(bookings, rows, 'AOR');
+const match = (rows) => T.matchPayments_(bookings, rows);
 
 test('matches the reference however the payer typed it', () => {
-  const m = match([row('AOR7K3QP', 130), row('ref aor7k3qp thanks', 130), row('FP 12/10 aor 7k3qp', 130), row('AOR-7K3QP', 130)]);
-  m.results.forEach((r) => { assert.strictEqual(r.status, 'matched'); assert.strictEqual(r.ref, 'AOR7K3QP'); });
-  assert.strictEqual(m.paid.AOR7K3QP, 520);
+  const m = match([row('RAKIM', 130), row('ref rakim thanks', 130), row('FP 12/10 Rakim.', 130), row('Rakim-Pongal', 130), row('PONGAL: RAKIM', 130)]);
+  m.results.forEach((r) => { assert.strictEqual(r.status, 'matched'); assert.strictEqual(r.ref, 'RAKIM'); });
+  assert.strictEqual(m.paid.RAKIM, 650);
+});
+
+test('a reference glued into other letters is NOT guessed at (no false matches)', () => {
+  const m = match([row('PONGALRAKIMTICKETS', 130)]);
+  assert.strictEqual(m.results[0].status, 'unmatched');
+  assert.match(m.results[0].text, /Possible: RAKIM/);
+});
+
+test('ordinary bank text never matches a booking by accident', () => {
+  const texts = ['FASTER PAYMENT FROM MRS P KUMAR', 'TICKETS FOR DINNER', 'PONGAL 2027 ADULT TICKET', 'MOBILE PAYMENT TOTAL DEBIT', 'MR RAJ SENIOR'];
+  texts.forEach((t) => assert.notStrictEqual(match([row(t, 12.34)]).results[0].status, 'matched', t));
+});
+
+test('a payer whose NAME equals a reference is not matched unless the amount also fits', () => {
+  // NEGUS is a reference for an £80 booking; here it is just a surname on a £25 payment
+  const wrongAmount = match([row('FASTER PAYMENT MR NEGUS TICKETS', 25)]);
+  assert.strictEqual(wrongAmount.results[0].status, 'unmatched');
+  assert.strictEqual(Object.keys(wrongAmount.paid).length, 0);
+  assert.match(wrongAmount.results[0].text, /NEGUS.*not the £80 they owe/);
+  // the real payment for that booking still matches
+  assert.strictEqual(match([row('MR NEGUS', 80)]).results[0].ref, 'NEGUS');
+});
+
+test('a part payment or wrong amount is flagged for a human, not silently applied', () => {
+  const m = match([row('RAKIM', 100)]);
+  assert.strictEqual(m.results[0].status, 'unmatched');
+  assert.match(m.results[0].text, /enter 100 in Paid manually for RAKIM/);
+  assert.strictEqual(Object.keys(m.paid).length, 0);
+});
+
+test('paying the remaining balance after a manual part payment matches', () => {
+  const list = [B('RAKIM', '07700900111', 130, { paidManual: 100 })];
+  const m = T.matchPayments_(list, [row('RAKIM', 30)]);
+  assert.strictEqual(m.results[0].status, 'matched');
+  assert.strictEqual(m.paid.RAKIM, 30);
 });
 
 test('falls back to the mobile number when the reference is wrong', () => {
   const m = match([row('07700900222 pongal', 40), row('+44 7700 900222', 40)]);
-  assert.strictEqual(m.results[0].ref, 'AORMMMMM');
+  assert.strictEqual(m.results[0].ref, 'MODAN');
   assert.match(m.results[0].text, /check/);
 });
 
 test('an unknown reference with a unique matching amount is only suggested, never applied', () => {
   const m = match([row('PONGAL TICKETS', 130)]);
   assert.strictEqual(m.results[0].status, 'unmatched');
-  assert.match(m.results[0].text, /Possible: AOR7K3QP/);
+  assert.match(m.results[0].text, /Possible: RAKIM/);
   assert.strictEqual(Object.keys(m.paid).length, 0);
 });
 
@@ -116,8 +175,14 @@ test('an amount that fits several unpaid bookings asks for the reference', () =>
   assert.match(m.results[0].text, /2 unpaid bookings/);
 });
 
+test('mobile number fallback also needs the right amount', () => {
+  const m = match([row('07700900222', 5)]);
+  assert.strictEqual(m.results[0].status, 'unmatched');
+  assert.match(m.results[0].text, /MODAN/);
+});
+
 test('money going out, zero rows and unrelated payments are not matched', () => {
-  const m = match([row('AOR7K3QP', -130), row('AOR7K3QP', 0), row('SALARY', 1234.5)]);
+  const m = match([row('RAKIM', -130), row('RAKIM', 0), row('SALARY', 1234.5)]);
   assert.strictEqual(m.results[0].status, 'skip');
   assert.strictEqual(m.results[1].status, 'skip');
   assert.strictEqual(m.results[2].status, 'unmatched');
@@ -125,8 +190,7 @@ test('money going out, zero rows and unrelated payments are not matched', () => 
 });
 
 test('a reference that does not exist is not matched', () => {
-  const m = match([row('AORZZZZZ', 40)]);
-  assert.notStrictEqual(m.results[0].status, 'matched');
+  assert.notStrictEqual(match([row('ZZZZZ', 40)]).results[0].status, 'matched');
 });
 
 test('status: pending, part paid, paid, overpaid, cancelled', () => {
@@ -139,8 +203,8 @@ test('status: pending, part paid, paid, overpaid, cancelled', () => {
 });
 
 test('paying twice is spotted as overpaid', () => {
-  const m = match([row('AORMMMMM', 40), row('AORMMMMM', 40)]);
-  assert.strictEqual(T.deriveStatus_(40, m.paid.AORMMMMM, 'Pending'), 'Overpaid');
+  const m = match([row('MODAN', 40), row('MODAN', 40)]);
+  assert.strictEqual(T.deriveStatus_(40, m.paid.MODAN, 'Pending'), 'Overpaid');
 });
 
 test('summary totals for the caterer and treasurer', () => {
@@ -156,21 +220,85 @@ test('summary totals for the caterer and treasurer', () => {
   assert.deepStrictEqual(plain(get('Vegetarian').slice(1)), [3, 2]);
   assert.deepStrictEqual(plain(get('Non-vegetarian').slice(1)), [3, 3]);
   assert.deepStrictEqual(plain(get('Money expected (£)').slice(1)), [170, 130]);
-  assert.deepStrictEqual(get('Still to collect (£)')[1], 40);
+  assert.strictEqual(get('Still to collect (£)')[1], 40);
 });
 
-test('confirmation email has the reference, amount and bank details', () => {
+test('confirmation email has the reference, amount, bank details and says to keep it', () => {
   const v = T.validateBooking_(good, T.CONFIG).value;
-  v.ref = 'AOR7K3QP';
+  v.ref = 'RAKIM';
   const mail = T.buildConfirmationEmail_(v, T.CONFIG);
-  assert(mail.subject.includes('AOR7K3QP'));
-  ['AOR7K3QP', '£130', T.CONFIG.bank.sortCode, T.CONFIG.bank.accountNumber, 'Adult (25 and over) x 2 = £80'].forEach((s) => assert(mail.body.includes(s), s));
+  assert(mail.subject.includes('RAKIM'));
+  ['PAYMENT REFERENCE: RAKIM', '£130', T.CONFIG.bank.sortCode, T.CONFIG.bank.accountNumber, 'Adult (25 and over) x 2 = £80', 'Keep this email'].forEach((s) => assert(mail.body.includes(s), s));
 });
 
 test('sheet schema is consistent', () => {
   const S = T.schema_();
   assert.strictEqual(S.keys.length, S.headers.length);
   assert.strictEqual(new Set(S.keys).size, S.keys.length);
+});
+
+// ---------- Settings sheet ----------
+const goodVals = { organiser: 'Tamil Sangam', eventName: 'Diwali Night 2027', dateText: 'Sat 6 Nov, 6pm', venue: 'Town Hall',
+  contactEmail: 'sangam@example.com', bankAccountName: 'TAMIL SANGAM', bankSortCode: '12 34 56', bankAccountNumber: '12345678',
+  payWithinDays: '5', capacity: '250', bookingsOpen: 'Yes', closedMessage: '' };
+const goodTickets = [['Adult', 25, 10], ['Child', '£12.50', ''], ['Under 5', 0, 4], ['', '', ''], ['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
+const settings = (v, t) => plain(T.parseSettings_(Object.assign({}, goodVals, v), t || goodTickets));
+
+test('valid settings are accepted and normalised', () => {
+  const c = settings({});
+  assert.deepStrictEqual(c.problems, []);
+  assert.strictEqual(c.bank.sortCode, '12-34-56');
+  assert.strictEqual(c.bank.accountNumber, '12345678');
+  assert.strictEqual(c.payWithinDays, 5);
+  assert.strictEqual(c.capacity, 250);
+  assert.strictEqual(c.bookingsOpen, true);
+  assert.deepStrictEqual(c.tickets.map((t) => [t.key, t.label, t.price, t.max]), [['t1', 'Adult', 25, 10], ['t2', 'Child', 12.5, 10], ['t3', 'Under 5', 0, 4]]);
+});
+
+test('a new organisation can run a different event end to end', () => {
+  const c = settings({});
+  const v = T.validateBooking_({ name: 'Anu Raj', email: 'a@b.co', mobile: '07123456789', counts: { t1: 2, t2: 1, t3: 1 }, veg: 1, consent: true }, c);
+  assert.deepStrictEqual(plain(v.errors), []);
+  assert.strictEqual(v.value.total, 62.5);
+});
+
+test('the example bank details are refused so nobody is told to pay 00-00-00', () => {
+  const c = settings({ bankSortCode: '00-00-00', bankAccountNumber: '00000000' });
+  assert(c.problems.some((p) => /example/.test(p)));
+});
+
+test('bad settings are reported in plain English', () => {
+  const has = (patch, re, t) => assert(settings(patch, t).problems.some((p) => re.test(p)), JSON.stringify(patch) + ' -> ' + re);
+  has({ eventName: '' }, /Event name/);
+  has({ contactEmail: 'nope' }, /Contact email/);
+  has({ bankSortCode: '12345' }, /sort code.*6 digits/i);
+  has({ bankAccountNumber: '1234567' }, /account number.*8 digits/i);
+  has({ payWithinDays: '0' }, /Days to pay/);
+  has({ capacity: '-1' }, /Maximum people/);
+  has({ capacity: 'lots' }, /Maximum people/);
+  has({ bookingsOpen: 'maybe' }, /Yes or No/);
+  has({}, /Add at least one ticket/, []);
+  has({}, /price above 0/, [['Free', 0, 5]]);
+  has({}, /needs a price/, [['Adult', 'abc', 5]]);
+  has({}, /needs a price/, [['Adult', '', 5]]);
+  has({}, /max per booking/, [['Adult', 10, 0]]);
+  has({}, /used twice/, [['Adult', 10, 5], ['adult', 12, 5]]);
+  has({}, /no name/, [['', 10, 5], ['Adult', 10, 5]]);
+});
+
+test('bookings can be closed from the sheet', () => {
+  assert.strictEqual(settings({ bookingsOpen: 'No' }).bookingsOpen, false);
+  assert.strictEqual(settings({ bookingsOpen: 'no ' }).problems.length, 0);
+});
+
+test('shipped example values pass the checks except the bank details', () => {
+  const d = T.DEFAULTS;
+  const vals = { organiser: d.organiser, eventName: d.eventName, dateText: d.dateText, venue: d.venue, contactEmail: d.contactEmail,
+    bankAccountName: d.bank.accountName, bankSortCode: d.bank.sortCode, bankAccountNumber: d.bank.accountNumber,
+    payWithinDays: d.payWithinDays, capacity: d.capacity, bookingsOpen: 'Yes', closedMessage: d.closedMessage };
+  const c = plain(T.parseSettings_(vals, d.tickets.map((t) => [t.label, t.price, t.max])));
+  assert.strictEqual(c.problems.length, 1);
+  assert.match(c.problems[0], /example/);
 });
 
 console.log('\n' + passed + ' tests passed');
