@@ -204,11 +204,14 @@
   }
 
   // Google Apps Script answers a booking in two steps: it runs the booking immediately, then
-  // redirects the browser to fetch the confirmation. Something (often an ad blocker or privacy
-  // extension) can block that second step even though the booking itself already went through.
-  // A same-details retry is safe: the backend recognises it as the same booking (see
-  // findDuplicate_ in Code.gs) and returns the existing reference instead of creating another one
-  // or sending a second email.
+  // redirects the browser to fetch the confirmation. Two things can go wrong on that second step
+  // even though the booking itself already went through: an ad blocker or privacy extension can
+  // block it, or (more commonly) the script was "asleep" and the first request had to wake it up,
+  // which can take 30+ seconds - long enough that a phone locking its screen or switching apps
+  // can cut the connection. Either way, a same-details retry is safe: the backend recognises it as
+  // the same booking (see findDuplicate_ in Code.gs) and returns the existing reference instead of
+  // creating another one or sending a second email. Retries wait longer each time, since a script
+  // that has just run once is normally fast again straight away.
   function post(d) {
     var attempt = function () {
       return fetch(BACKEND, {
@@ -217,9 +220,10 @@
         body: JSON.stringify(d)
       }).then(function (r) { return r.json(); });
     };
-    return attempt().catch(function () {
-      return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(attempt);
-    });
+    var wait = function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); };
+    return attempt()
+      .catch(function () { return wait(2000).then(attempt); })
+      .catch(function () { return wait(5000).then(attempt); });
   }
 
   function showResult(r) {
@@ -330,10 +334,26 @@
     });
   }
 
+  function fetchConfig() {
+    var wait = function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); };
+    var attempt = function () { return fetch(BACKEND + '?action=config').then(function (r) { return r.json(); }); };
+    return attempt()
+      .catch(function () { return wait(2000).then(attempt); })
+      .catch(function () { return wait(5000).then(attempt); });
+  }
+
   function loadConfig() {
     $('connError').hidden = true;
+    $('loadingHint').hidden = true;
     $('eventTitle').textContent = 'Loading...';
-    fetch(BACKEND + '?action=config').then(function (r) { return r.json(); }).then(start).catch(function () {
+    var hintTimer = setTimeout(function () { $('loadingHint').hidden = false; }, 3000);
+    fetchConfig().then(function (cfg) {
+      clearTimeout(hintTimer);
+      $('loadingHint').hidden = true;
+      start(cfg);
+    }).catch(function () {
+      clearTimeout(hintTimer);
+      $('loadingHint').hidden = true;
       $('eventTitle').textContent = 'Book tickets';
       $('connError').hidden = false;
     });

@@ -355,6 +355,27 @@ test('a script not attached to a Sheet says so in plain English', () => {
   assert.throws(() => T.ss_(), /not attached to a Google Sheet.*Extensions > Apps Script/);
 });
 
+test('the warm-up trigger is installed once and not duplicated on repeat setup', () => {
+  const triggers = [];
+  const sandbox = {
+    console: { log() {}, error() {} },
+    SpreadsheetApp: { getActiveSpreadsheet: () => null },
+    ScriptApp: {
+      getProjectTriggers: () => triggers,
+      newTrigger(fn) {
+        const t = { fn, timeBased: () => ({ everyMinutes: () => ({ create: () => { triggers.push({ getHandlerFunction: () => fn }); } }) }) };
+        return t;
+      },
+    },
+  };
+  const U = vm.runInNewContext(code + '\n;({ installWarmupTrigger_ })', sandbox);
+  U.installWarmupTrigger_();
+  U.installWarmupTrigger_();
+  U.installWarmupTrigger_();
+  assert.strictEqual(triggers.length, 1);
+  assert.strictEqual(triggers[0].getHandlerFunction(), 'keepWarm');
+});
+
 test('running from the code editor (no pop-up window) uses a toast instead of crashing', () => {
   const toasts = [];
   const sandbox = { console: { log() {}, error() {} }, SpreadsheetApp: {

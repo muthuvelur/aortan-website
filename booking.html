@@ -24,13 +24,16 @@
 
   <h2 id="eventTitle">Loading...</h2>
   <p id="eventMeta" class="event-meta"></p>
+  <p id="loadingHint" class="hint" hidden>Still loading &mdash; this can take up to a minute if the booking page hasn't
+    been used for a while. Please keep this page open and your screen on.</p>
 
   <div id="closedMsg" class="notice" hidden></div>
   <div id="connError" class="notice" hidden>
-    <p><strong>This page couldn't load the booking details.</strong> This is sometimes caused by an ad
-      blocker or privacy extension blocking the connection.</p>
-    <p>Please try: turning off any ad blocker or privacy extension for this site and reloading, or opening
-      this page in a different browser or in private/incognito mode.</p>
+    <p><strong>This page couldn't load the booking details.</strong> This can happen if the booking page
+      hasn't been used for a while and takes too long to wake up, if the screen locked or the app was
+      switched while it was loading, or if an ad blocker or privacy extension is blocking the connection.</p>
+    <p>Please try again below and keep the page open and your screen on, or try turning off any ad blocker
+      for this site, or open this page in a different browser or private/incognito mode.</p>
     <p><button id="retryBtn" type="button" class="btn small">Try again</button></p>
     <p class="hint">Still stuck? Please contact the organiser directly using the details on their invite or website.</p>
   </div>
@@ -77,7 +80,8 @@
     <button id="submitBtn" type="submit" class="btn">
       <span id="submitSpinner" class="spinner" hidden></span><span id="submitBtnText">Get my payment reference</span>
     </button>
-    <p id="waitingHint" class="hint" hidden>Still working &mdash; this can take up to 15 seconds. Please don't close this page or click again.</p>
+    <p id="waitingHint" class="hint" hidden>Still working &mdash; the first booking after a quiet spell can take up to a
+      minute. Please keep this page open and your screen on, and don't click again.</p>
     <p class="hint">You will pay by bank transfer in the next step. Please book only once.</p>
   </form>
 

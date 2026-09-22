@@ -715,8 +715,21 @@ function setup() {
     getBookingsSheet_();
     getBankSheet_();
     refreshSummary_();
+    installWarmupTrigger_();
     notify_('Setup done', 'Sheets ready: Bookings, Bank and Summary. Next, deploy the web app (see README).');
   });
+}
+
+// Google "sleeps" a script that has not run for a while, so the first request after that can take
+// much longer than usual (a real booking took over 30 seconds once). Running a trivial task every
+// few minutes keeps the script warm, so real visitors are much less likely to hit a slow first load.
+function installWarmupTrigger_() {
+  const already = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'keepWarm'; });
+  if (!already) ScriptApp.newTrigger('keepWarm').timeBased().everyMinutes(10).create();
+}
+
+function keepWarm() {
+  try { useSettings_(); } catch (err) { /* just here to keep the script warm */ }
 }
 
 function matchBankPayments() { guard_(matchBankPayments_); }
