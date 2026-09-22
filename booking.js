@@ -256,7 +256,8 @@
       }
       showResult(r);
     }).catch(function (e) {
-      showError(e && e.userMessage ? e.userMessage : 'We could not complete your booking. Please check your connection and try again.');
+      showError(e && e.userMessage ? e.userMessage
+        : 'We could not reach the booking system to complete your booking. This is sometimes caused by an ad blocker or privacy extension. Please try turning that off, or use a different browser or private/incognito mode, then click the button again — it is safe to try again.');
     }).then(function () {
       busy = false;
       $('submitBtn').disabled = false;
