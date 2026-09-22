@@ -74,7 +74,10 @@
     <div class="hp" aria-hidden="true"><label>Leave this empty <input id="website" type="text" tabindex="-1" autocomplete="off"></label></div>
 
     <p id="formError" class="form-error" role="alert" hidden></p>
-    <button id="submitBtn" type="submit" class="btn">Get my payment reference</button>
+    <button id="submitBtn" type="submit" class="btn">
+      <span id="submitSpinner" class="spinner" hidden></span><span id="submitBtnText">Get my payment reference</span>
+    </button>
+    <p id="waitingHint" class="hint" hidden>Still working &mdash; this can take up to 15 seconds. Please don't close this page or click again.</p>
     <p class="hint">You will pay by bank transfer in the next step. Please book only once.</p>
   </form>
 

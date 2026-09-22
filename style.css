@@ -223,3 +223,9 @@ footer.site-footer a { color: var(--gold); }
 .pay-table td { word-break: break-word; }
 .backbar { margin: 0 0 8px; font-size: 0.95rem; }
 .backbar a { color: var(--teal-dark); font-weight: 600; }
+.spinner {
+  display: inline-block; width: 16px; height: 16px; margin-right: 8px;
+  border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%;
+  vertical-align: -3px; animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

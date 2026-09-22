@@ -259,7 +259,9 @@
     if (err) { showError(err); return; }
     busy = true;
     $('submitBtn').disabled = true;
-    $('submitBtn').textContent = 'Please wait...';
+    $('submitSpinner').hidden = false;
+    $('submitBtnText').textContent = 'Please wait...';
+    var waitTimer = setTimeout(function () { $('waitingHint').hidden = false; }, 3000);
     (DEMO ? demoBook(d) : post(d)).then(function (r) {
       if (!r || !r.ok) throw userError('' + ((r && r.error) || 'Something went wrong. Please try again.'));
       if (typeof r.reference !== 'string' || typeof r.total !== 'number' || !r.bank) {
@@ -270,9 +272,12 @@
       showError(e && e.userMessage ? e.userMessage
         : 'We could not confirm your booking on screen, although it may have already gone through — please check your email first: if you received a booking confirmation, you do not need to do anything else. If not, this is sometimes caused by an ad blocker or privacy extension; try turning that off, or use a different browser or private/incognito mode, then click the button again — it is safe to try again.');
     }).then(function () {
+      clearTimeout(waitTimer);
       busy = false;
       $('submitBtn').disabled = false;
-      $('submitBtn').textContent = 'Get my payment reference';
+      $('submitSpinner').hidden = true;
+      $('submitBtnText').textContent = 'Get my payment reference';
+      $('waitingHint').hidden = true;
     });
   }
 
