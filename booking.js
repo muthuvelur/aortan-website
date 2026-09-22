@@ -203,12 +203,23 @@
     });
   }
 
+  // Google Apps Script answers a booking in two steps: it runs the booking immediately, then
+  // redirects the browser to fetch the confirmation. Something (often an ad blocker or privacy
+  // extension) can block that second step even though the booking itself already went through.
+  // A same-details retry is safe: the backend recognises it as the same booking (see
+  // findDuplicate_ in Code.gs) and returns the existing reference instead of creating another one
+  // or sending a second email.
   function post(d) {
-    return fetch(BACKEND, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(d)
-    }).then(function (r) { return r.json(); });
+    var attempt = function () {
+      return fetch(BACKEND, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(d)
+      }).then(function (r) { return r.json(); });
+    };
+    return attempt().catch(function () {
+      return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(attempt);
+    });
   }
 
   function showResult(r) {
@@ -257,7 +268,7 @@
       showResult(r);
     }).catch(function (e) {
       showError(e && e.userMessage ? e.userMessage
-        : 'We could not reach the booking system to complete your booking. This is sometimes caused by an ad blocker or privacy extension. Please try turning that off, or use a different browser or private/incognito mode, then click the button again — it is safe to try again.');
+        : 'We could not confirm your booking on screen, although it may have already gone through — please check your email first: if you received a booking confirmation, you do not need to do anything else. If not, this is sometimes caused by an ad blocker or privacy extension; try turning that off, or use a different browser or private/incognito mode, then click the button again — it is safe to try again.');
     }).then(function () {
       busy = false;
       $('submitBtn').disabled = false;
