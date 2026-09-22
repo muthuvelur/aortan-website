@@ -27,6 +27,8 @@ done in the web browser on github.com.
    leave every `<...>` tag exactly where it is. For example, change:
    - `Pongal 2027` → `Pongal 2028`
    - the date, venue (if it changes), programme list, and ticket prices
+   - Leave the line `<a href="booking.html" class="btn">Buy Tickets</a>`
+     exactly as it is — that's the ticket booking button.
 6. When you're done, scroll to the bottom of the page.
 7. Under "Commit changes", leave "Commit directly to the `master` branch"
    selected, and click the green **Commit changes** button.
