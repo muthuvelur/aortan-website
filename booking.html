@@ -26,6 +26,14 @@
   <p id="eventMeta" class="event-meta"></p>
 
   <div id="closedMsg" class="notice" hidden></div>
+  <div id="connError" class="notice" hidden>
+    <p><strong>This page couldn't load the booking details.</strong> This is sometimes caused by an ad
+      blocker or privacy extension blocking the connection.</p>
+    <p>Please try: turning off any ad blocker or privacy extension for this site and reloading, or opening
+      this page in a different browser or in private/incognito mode.</p>
+    <p><button id="retryBtn" type="button" class="btn small">Try again</button></p>
+    <p class="hint">Still stuck? Please contact the organiser directly using the details on their invite or website.</p>
+  </div>
   <noscript><div class="notice">Please turn on JavaScript to book tickets.</div></noscript>
 
   <form id="bookingForm" class="card booking-form" novalidate hidden>

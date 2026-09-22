@@ -313,14 +313,22 @@
     });
   }
 
+  function loadConfig() {
+    $('connError').hidden = true;
+    $('eventTitle').textContent = 'Loading...';
+    fetch(BACKEND + '?action=config').then(function (r) { return r.json(); }).then(start).catch(function () {
+      $('eventTitle').textContent = 'Book tickets';
+      $('connError').hidden = false;
+    });
+  }
+
   if (UNKNOWN_ORG) {
     document.title = 'Book tickets';
     showClosed('This booking link is not recognised. Please check the link you were given.');
   } else if (DEMO) {
     start(DEMO_CONFIG);
   } else {
-    fetch(BACKEND + '?action=config').then(function (r) { return r.json(); }).then(start).catch(function () {
-      showClosed('The booking system is not available right now. Please try again later.');
-    });
+    $('retryBtn').addEventListener('click', loadConfig);
+    loadConfig();
   }
 })();
