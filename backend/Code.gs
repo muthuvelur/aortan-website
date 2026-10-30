@@ -28,7 +28,7 @@ const DEFAULTS = {
   spreadsheetId: '',
   problems: [],
   tickets: [
-    { key: 'adult', label: 'Adult (25 and over)', price: 35, max: 10 },
+    { key: 'adult', label: 'Adult (25 and over)', price: 30, max: 10 },
     { key: 'youth', label: 'Ages 16 to 24', price: 25, max: 10 },
     { key: 'child', label: 'Ages 6 to 15', price: 15, max: 10 },
     { key: 'infant', label: 'Children under 5', price: 0, max: 10 },
