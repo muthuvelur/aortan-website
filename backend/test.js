@@ -16,11 +16,16 @@ function test(name, fn) { fn(); passed++; console.log('ok  ' + name); }
 const good = { name: ' Priya  Kumar ', email: 'Priya@Example.com ', mobile: '+44 7700 900123',
   counts: { adult: 2, youth: 1, child: 1, infant: 1 }, veg: 2, consent: true };
 
+// Prices come from the template, so these tests keep working when the yearly prices change.
+const P = {};
+T.CONFIG.tickets.forEach((t) => { P[t.key] = t.price; });
+const FAMILY_TOTAL = 2 * P.adult + P.youth + P.child; // the 'good' booking: 2 adult, 1 youth, 1 child, 1 under-5
+
 // ---------- bookings ----------
 test('valid booking is priced by the server and normalised', () => {
   const v = T.validateBooking_(good, T.CONFIG);
   assert.deepStrictEqual(plain(v.errors), []);
-  assert.strictEqual(v.value.total, 2 * 40 + 30 + 20);
+  assert.strictEqual(v.value.total, FAMILY_TOTAL);
   assert.strictEqual(v.value.people, 5);
   assert.strictEqual(v.value.nonVeg, 3);
   assert.strictEqual(v.value.name, 'Priya Kumar');
@@ -30,7 +35,7 @@ test('valid booking is priced by the server and normalised', () => {
 
 test('client-supplied total or prices are ignored', () => {
   const v = T.validateBooking_(Object.assign({}, good, { total: 1, prices: { adult: 1 } }), T.CONFIG);
-  assert.strictEqual(v.value.total, 130);
+  assert.strictEqual(v.value.total, FAMILY_TOTAL);
 });
 
 test('bad inputs are rejected', () => {
@@ -228,7 +233,7 @@ test('confirmation email has the reference, amount, bank details and says to kee
   v.ref = 'RAKIM';
   const mail = T.buildConfirmationEmail_(v, T.CONFIG);
   assert(mail.subject.includes('RAKIM'));
-  ['PAYMENT REFERENCE: RAKIM', '£130', T.CONFIG.bank.sortCode, T.CONFIG.bank.accountNumber, 'Adult (25 and over) x 2 = £80', 'Keep this email'].forEach((s) => assert(mail.body.includes(s), s));
+  ['PAYMENT REFERENCE: RAKIM', '£' + FAMILY_TOTAL, T.CONFIG.bank.sortCode, T.CONFIG.bank.accountNumber, 'Adult (25 and over) x 2 = £' + 2 * P.adult, 'Keep this email'].forEach((s) => assert(mail.body.includes(s), s));
 });
 
 test('sheet schema is consistent', () => {
