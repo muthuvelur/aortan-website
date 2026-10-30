@@ -83,6 +83,14 @@
     if (isHex(cfg.headerColour)) { root.setProperty('--teal', cfg.headerColour); root.setProperty('--teal-dark', darken(cfg.headerColour, 0.35)); }
     if (isHex(cfg.buttonColour)) root.setProperty('--maroon', cfg.buttonColour);
 
+    var brandLink = $('brandLink');
+    if (isHttps(cfg.websiteUrl)) {
+      brandLink.href = cfg.websiteUrl;
+      brandLink.title = 'Back to the ' + org + ' website';
+    } else {
+      brandLink.removeAttribute('href');
+    }
+
     var back = $('backLink');
     if (isHttps(cfg.websiteUrl)) {
       back.href = cfg.websiteUrl;
