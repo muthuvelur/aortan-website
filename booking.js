@@ -29,6 +29,7 @@
     venue: 'Walsall Football Club, Jimmy Walker Suite, Bescot Crescent, Walsall, WS1 4SA',
     open: true,
     askFood: true,
+    ticketNote: 'Early bird rates',
     payWithinDays: 3,
     tickets: [
       { key: 'adult', label: 'Adult (25 and over)', price: 30, max: 10 },
@@ -169,6 +170,8 @@
       box.appendChild(row);
     });
     $('foodSection').hidden = !askFood();
+    $('ticketNote').textContent = config.ticketNote || '';
+    $('ticketNote').hidden = !config.ticketNote;
     refresh();
   }
 

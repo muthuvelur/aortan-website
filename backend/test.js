@@ -403,4 +403,32 @@ test('from the Sheet menu a pop-up window is used', () => {
   assert.deepStrictEqual(plain(alerts), [['Settings look good', 'All fine']]);
 });
 
+test('the note above the tickets (e.g. Early bird rates) is optional', () => {
+  assert.strictEqual(settings({ ticketNote: 'Early bird rates' }).ticketNote, 'Early bird rates');
+  assert.deepStrictEqual(settings({ ticketNote: 'Early bird rates' }).problems, []);
+  assert.strictEqual(settings({}).ticketNote, '');
+  assert.deepStrictEqual(settings({}).problems, []);
+});
+
+test('an existing Settings sheet gets the new row added without touching filled-in rows', () => {
+  const idx = plain(T.SETTING_DEFS).findIndex((d) => d.key === 'ticketNote');
+  assert(idx > 0);
+  const written = [];
+  const cells = {};
+  plain(T.SETTING_DEFS).forEach((d, i) => { if (d.key !== 'ticketNote') cells[i + 2] = d.label; }); // every row filled except the new one
+  const sheet = { getRange: (row, col, nr, nc) => ({
+    getValue: () => (col === 1 ? (cells[row] || '') : ''),
+    setNumberFormat() { return this; },
+    setValues(v) { written.push({ row, v: plain(v) }); return this; },
+  }) };
+  const sandbox = { console: { log() {}, error() {} }, SpreadsheetApp: { getActiveSpreadsheet: () => null } };
+  const U = vm.runInNewContext(code + '\n;({ ensureSettingRows_ })', sandbox);
+  U.ensureSettingRows_(sheet);
+  assert.strictEqual(written.length, 1);
+  assert.strictEqual(written[0].row, idx + 2);
+  assert.strictEqual(written[0].v[0][0], 'Note above the tickets (optional)');
+  assert.strictEqual(written[0].v[0][1], 'Early bird rates');
+  U.ensureSettingRows_({ getRange: () => ({ getValue: () => 'filled', setNumberFormat() { return this; }, setValues() { throw new Error('must not overwrite'); } }) });
+});
+
 console.log('\n' + passed + ' tests passed');

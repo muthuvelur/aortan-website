@@ -18,6 +18,7 @@ const DEFAULTS = {
   capacity: 0,
   bookingsOpen: true,
   askFood: true,
+  ticketNote: 'Early bird rates',
   tagline: 'Association of Overseas Residents of Tamil Nadu',
   tagline2: 'அயல்நாடு வாழ் தமிழ் நாட்டினர் சங்கம்',
   logoUrl: 'https://aortan.org.uk/images/logo-cutout.png',
@@ -51,6 +52,7 @@ const SETTING_DEFS = [
   { key: 'capacity', label: 'Maximum people', help: '0 means no limit; otherwise bookings stop when full', type: 'int', min: 0, max: 100000 },
   { key: 'bookingsOpen', label: 'Bookings open?', help: 'Yes or No. Set to No to close bookings', type: 'yesno' },
   { key: 'askFood', label: 'Ask about vegetarian food?', help: 'Yes or No. Choose No if food choice does not matter for your event', type: 'yesno' },
+  { key: 'ticketNote', label: 'Note above the tickets (optional)', help: 'e.g. Early bird rates. Shown above the ticket choices. Leave empty for none', required: false },
   { key: 'closedMessage', label: 'Message when closed', help: 'Shown on the page when bookings are closed', required: false },
   { key: 'tagline', label: 'PAGE LOOK (optional): line under the name', help: 'e.g. Association of Overseas Residents of Tamil Nadu. Leave empty for none', required: false },
   { key: 'tagline2', label: 'PAGE LOOK (optional): second line', help: 'Another short line, for example in another language', required: false },
@@ -410,16 +412,33 @@ function parseSettings_(vals, ticketRows) {
   return cfg;
 }
 
-function seedSettings_(sheet) {
+function seedValues_() {
   const bank = DEFAULTS.bank;
-  const seed = {
+  return {
     organiser: DEFAULTS.organiser, eventName: DEFAULTS.eventName, dateText: DEFAULTS.dateText, venue: DEFAULTS.venue,
     contactEmail: DEFAULTS.contactEmail, bankAccountName: bank.accountName, bankSortCode: bank.sortCode,
     bankAccountNumber: bank.accountNumber, payWithinDays: DEFAULTS.payWithinDays, capacity: DEFAULTS.capacity,
     bookingsOpen: DEFAULTS.bookingsOpen ? 'Yes' : 'No', askFood: DEFAULTS.askFood ? 'Yes' : 'No', closedMessage: DEFAULTS.closedMessage,
     tagline: DEFAULTS.tagline, tagline2: DEFAULTS.tagline2, logoUrl: DEFAULTS.logoUrl, websiteUrl: DEFAULTS.websiteUrl,
-    headerColour: DEFAULTS.headerColour, buttonColour: DEFAULTS.buttonColour,
+    headerColour: DEFAULTS.headerColour, buttonColour: DEFAULTS.buttonColour, ticketNote: DEFAULTS.ticketNote,
   };
+}
+
+// A Settings sheet made before a setting existed gets the new row added (label, example value, help)
+// without touching anything already filled in.
+function ensureSettingRows_(sheet) {
+  const seed = seedValues_();
+  SETTING_DEFS.forEach(function (d, i) {
+    const row = i + 2;
+    if (String(sheet.getRange(row, 1).getValue()).trim() === '') {
+      sheet.getRange(row, 2).setNumberFormat('@');
+      sheet.getRange(row, 1, 1, 3).setValues([[d.label, seed[d.key], d.help]]);
+    }
+  });
+}
+
+function seedSettings_(sheet) {
+  const seed = seedValues_();
   sheet.getRange(1, 1, 1, 3).setValues([['Setting', 'Value', 'What to enter']]);
   sheet.getRange(2, 2, SETTING_DEFS.length, 1).setNumberFormat('@');
   sheet.getRange(2, 1, SETTING_DEFS.length, 3).setValues(SETTING_DEFS.map(function (d) { return [d.label, seed[d.key], d.help]; }));
@@ -495,7 +514,7 @@ function publicConfig_() {
     open: !CONFIG.problems.length && CONFIG.bookingsOpen && spacesLeft !== 0,
     closedMessage: CONFIG.problems.length ? 'Booking is not available yet. Please check back soon.' : (spacesLeft === 0 ? 'Sorry, this event is now fully booked.' : CONFIG.closedMessage),
     payWithinDays: CONFIG.payWithinDays, tickets: CONFIG.tickets, spacesLeft: spacesLeft,
-    askFood: CONFIG.askFood !== false, contactEmail: CONFIG.contactEmail, tagline: CONFIG.tagline || '', tagline2: CONFIG.tagline2 || '',
+    askFood: CONFIG.askFood !== false, ticketNote: CONFIG.ticketNote || '', contactEmail: CONFIG.contactEmail, tagline: CONFIG.tagline || '', tagline2: CONFIG.tagline2 || '',
     logoUrl: CONFIG.logoUrl || '', websiteUrl: CONFIG.websiteUrl || '', headerColour: CONFIG.headerColour || '', buttonColour: CONFIG.buttonColour || '',
   };
 }
@@ -711,6 +730,7 @@ function setup() {
     notify_('Settings sheet created', 'Fill in the Settings tab (your event, bank details and ticket types), then run setup again.');
     return;
   }
+  ensureSettingRows_(ss.getSheetByName('Settings'));
   guard_(function () {
     getBookingsSheet_();
     getBankSheet_();
