@@ -25,7 +25,7 @@
     buttonColour: '',
     contactEmail: 'aortanbirmingham@gmail.com',
     eventName: 'Thamizhar Thirunal – Pongal 2027',
-    dateText: 'Saturday, date to be confirmed, 2027 from 4 PM',
+    dateText: 'Saturday 6th February 2027, from 4 PM',
     venue: 'Walsall Football Club, Jimmy Walker Suite, Bescot Crescent, Walsall, WS1 4SA',
     open: true,
     askFood: true,

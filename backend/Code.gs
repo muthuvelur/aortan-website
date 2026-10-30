@@ -10,7 +10,7 @@
 const DEFAULTS = {
   organiser: 'AORTAN',
   eventName: 'Thamizhar Thirunal – Pongal 2027',
-  dateText: 'Saturday, date to be confirmed, 2027 from 4 PM',
+  dateText: 'Saturday 6th February 2027, from 4 PM',
   venue: 'Walsall Football Club, Jimmy Walker Suite, Bescot Crescent, Walsall, WS1 4SA',
   contactEmail: 'aortanbirmingham@gmail.com',
   bank: { accountName: 'AORTAN', sortCode: '00-00-00', accountNumber: '00000000' },
