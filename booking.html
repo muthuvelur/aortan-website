@@ -24,8 +24,14 @@
     <strong>Demo mode.</strong> Nothing you enter here is saved and no email is sent. The bank details shown are placeholders.
   </div>
 
-  <h2 id="eventTitle">Loading...</h2>
-  <p id="eventMeta" class="event-meta"></p>
+  <section class="event-hero" id="eventHero">
+    <p class="hero-kicker">Book your tickets</p>
+    <h2 id="eventTitle">Loading...</h2>
+    <div class="hero-facts">
+      <div class="hero-fact" id="factDate" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span id="eventDate"></span></div>
+      <div class="hero-fact" id="factVenue" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg><span id="eventVenue"></span></div>
+    </div>
+  </section>
   <p id="loadingHint" class="hint" hidden>Still loading &mdash; this can take up to a minute if the booking page hasn't
     been used for a while. Please keep this page open and your screen on.</p>
 
@@ -42,7 +48,7 @@
   <noscript><div class="notice">Please turn on JavaScript to book tickets.</div></noscript>
 
   <form id="bookingForm" class="card booking-form" novalidate hidden>
-    <h3>1. Your details</h3>
+    <h3 class="step"><span class="step-no">1</span>Your details</h3>
     <div class="field">
       <label for="name">Full name</label>
       <input id="name" type="text" autocomplete="name" placeholder="First name Surname" required>
@@ -56,13 +62,13 @@
       <input id="mobile" type="tel" autocomplete="tel" placeholder="07777123456" required>
     </div>
 
-    <h3>2. Tickets</h3>
+    <h3 class="step"><span class="step-no">2</span>Choose your tickets</h3>
     <p id="ticketNote" class="early-note" hidden></p>
     <div id="ticketRows"></div>
 
     <div id="foodSection">
-      <h3>3. Food</h3>
-      <div class="ticket-row">
+      <h3 class="step"><span class="step-no">3</span>Food</h3>
+      <div class="ticket-card tc-food">
         <label for="veg">How many people need <strong>vegetarian</strong> food?</label>
         <select id="veg"></select>
       </div>
@@ -80,7 +86,7 @@
     <div class="hp" aria-hidden="true"><label>Leave this empty <input id="website" type="text" tabindex="-1" autocomplete="off"></label></div>
 
     <p id="formError" class="form-error" role="alert" hidden></p>
-    <button id="submitBtn" type="submit" class="btn">
+    <button id="submitBtn" type="submit" class="btn big block">
       <span id="submitSpinner" class="spinner" hidden></span><span id="submitBtnText">Get my payment reference</span>
     </button>
     <p id="waitingHint" class="hint" hidden>Still working &mdash; the first booking after a quiet spell can take up to a
@@ -89,9 +95,11 @@
   </form>
 
   <section id="resultPanel" class="card result-panel" hidden>
-    <h3>Booking received - now please pay</h3>
+    <div class="result-hero">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>
+      <div><h3>Booking received</h3><p>Now please pay &mdash; your places are confirmed once we receive your payment.</p></div>
+    </div>
     <p id="dupNote" class="notice" hidden>You have already booked with these details, so here is your existing reference. No new booking was made.</p>
-    <p>Your places are confirmed once we receive your payment.</p>
 
     <div class="ref-box">
       <div class="ref-label">Your payment reference</div>

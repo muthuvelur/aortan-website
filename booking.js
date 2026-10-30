@@ -112,6 +112,11 @@
     }
   }
 
+  function setFact(boxId, textId, value) {
+    $(textId).textContent = value || '';
+    $(boxId).hidden = !value;
+  }
+
   function askFood() { return !config || config.askFood !== false; }
 
   function fillSelect(sel, max, keep) {
@@ -155,12 +160,24 @@
   function buildForm() {
     var box = $('ticketRows');
     box.innerHTML = '';
-    config.tickets.forEach(function (t) {
+    config.tickets.forEach(function (t, i) {
       var row = document.createElement('div');
-      row.className = 'ticket-row';
+      row.className = 'ticket-card tc-' + (i % 4);
       var label = document.createElement('label');
       label.setAttribute('for', 't_' + t.key);
-      label.textContent = t.label + ' - ' + (t.price > 0 ? money(t.price) + ' each' : 'Free');
+      var name = document.createElement('span');
+      name.className = 't-name';
+      name.textContent = t.label;
+      var price = document.createElement('span');
+      price.className = 't-price';
+      price.textContent = t.price > 0 ? money(t.price) : 'Free';
+      if (t.price > 0) {
+        var each = document.createElement('small');
+        each.textContent = ' each';
+        price.appendChild(each);
+      }
+      label.appendChild(name);
+      label.appendChild(price);
       var sel = document.createElement('select');
       sel.id = 't_' + t.key;
       fillSelect(sel, t.max, false);
@@ -339,7 +356,8 @@
     config = cfg;
     applyBranding(cfg);
     $('eventTitle').textContent = cfg.eventName || 'Book tickets';
-    $('eventMeta').textContent = [cfg.dateText, cfg.venue].filter(Boolean).join(' - ');
+    setFact('factDate', 'eventDate', cfg.dateText);
+    setFact('factVenue', 'eventVenue', cfg.venue);
     $('demoBanner').hidden = !DEMO;
     if (!cfg.open) {
       showClosed(cfg.closedMessage || 'Bookings are closed.');
