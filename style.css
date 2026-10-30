@@ -237,3 +237,4 @@ a.brand-link:hover .logo { filter: drop-shadow(0 3px 8px rgba(0,0,0,0.45)) brigh
 .backbar a { display: inline-block; padding: 6px 0; }
 .early-note { display: inline-block; margin: 0 0 8px; padding: 4px 12px; background: #fbf1d3; border: 1px solid var(--gold); border-radius: 999px; font-weight: 600; color: var(--maroon); font-size: 0.95rem; }
 [hidden] { display: none !important; }
+a.btn, a.btn:hover, a.btn:visited { text-decoration: none; color: #fff; }
