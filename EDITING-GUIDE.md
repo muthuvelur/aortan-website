@@ -27,8 +27,12 @@ done in the web browser on github.com.
    leave every `<...>` tag exactly where it is. For example, change:
    - `Pongal 2027` → `Pongal 2028`
    - the date, venue (if it changes), programme list, and ticket prices
-   - Leave the line `<a href="booking.html" class="btn">Buy Tickets</a>`
-     exactly as it is — that's the ticket booking button.
+   - The four coloured price boxes: change the number inside each `<strong>...</strong>`
+     (for example `&pound;30`). To remove the early bird, delete the whole block that
+     starts `<div class="invite-offer">` and ends at its closing `</div>`.
+   - Leave the `<a href="booking.html" class="btn big">Book your tickets now</a>` line and the
+     `<img src="images/booking-qr.png" ...>` line exactly as they are: they are the booking
+     button and its QR code, and they stay the same every year.
 6. When you're done, scroll to the bottom of the page.
 7. Under "Commit changes", leave "Commit directly to the `master` branch"
    selected, and click the green **Commit changes** button.

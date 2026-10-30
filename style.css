@@ -238,3 +238,46 @@ a.brand-link:hover .logo { filter: drop-shadow(0 3px 8px rgba(0,0,0,0.45)) brigh
 .early-note { display: inline-block; margin: 0 0 8px; padding: 4px 12px; background: #fbf1d3; border: 1px solid var(--gold); border-radius: 999px; font-weight: 600; color: var(--maroon); font-size: 0.95rem; }
 [hidden] { display: none !important; }
 a.btn, a.btn:hover, a.btn:visited { text-decoration: none; color: #fff; }
+
+/* ---------- invite panel on the home page ---------- */
+.invite { border: 2px solid var(--gold); border-radius: 16px; overflow: hidden; margin-bottom: 24px; background: linear-gradient(180deg, #fff9e6 0%, #fdf0c8 100%); box-shadow: 0 3px 14px rgba(0,0,0,0.10); }
+.invite-head { text-align: center; padding: 26px 20px 20px; color: #fff; background: radial-gradient(circle at 18% 20%, rgba(255,255,255,0.14) 0 14%, transparent 15%), radial-gradient(circle at 85% 80%, rgba(255,255,255,0.10) 0 16%, transparent 17%), linear-gradient(135deg, #8e1b1b, #b3392b 55%, #c9822e); border-bottom: 6px double var(--gold); }
+.invite-kicker { margin: 0 0 6px; font-size: 0.95rem; letter-spacing: 2px; text-transform: uppercase; opacity: 0.92; }
+.invite-tamil { margin: 0; color: #fff; border: 0; padding: 0; font-size: 2.3rem; line-height: 1.25; }
+.invite-title { margin: 6px 0 0; font-size: 1.15rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #ffe9b0; }
+.invite-body { padding: 22px 24px 20px; }
+.invite-when { display: flex; flex-wrap: wrap; gap: 14px 40px; justify-content: center; margin-bottom: 8px; }
+.invite-fact { display: flex; align-items: center; gap: 12px; }
+.invite-fact svg { width: 34px; height: 34px; flex: 0 0 34px; fill: none; stroke: var(--maroon); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.invite-fact strong { display: block; font-size: 1.15rem; color: var(--teal-dark); }
+.invite-fact span { color: #6b5a3a; font-size: 0.95rem; }
+.invite-sub { margin: 18px 0 8px; text-align: center; color: var(--maroon); font-size: 1.1rem; letter-spacing: 1px; text-transform: uppercase; }
+.invite-programme { list-style: none; padding: 0; margin: 0 0 18px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.invite-programme li { background: #fff; border: 1px solid #e3cf9a; border-radius: 999px; padding: 6px 14px; font-size: 0.95rem; }
+.invite-offer { margin: 6px auto 12px; max-width: 520px; text-align: center; color: #fff; background: linear-gradient(135deg, #8e1b1b, #a52a24); border-radius: 12px; padding: 10px 16px; border: 1px solid #6e1212; }
+.invite-offer strong { display: block; font-size: 1.35rem; letter-spacing: 0.5px; }
+.invite-offer span { color: #ffe9b0; }
+.price-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.price-card { border-radius: 12px; border: 1.5px solid; padding: 12px 8px 10px; text-align: center; display: flex; flex-direction: column; gap: 2px; }
+.price-card strong { font-size: 1.9rem; line-height: 1.1; color: #5a1010; }
+.price-card .who { font-weight: 700; }
+.price-card .ages { font-size: 0.85rem; color: #6b5a3a; }
+.pc-adult { background: #fde4e1; border-color: #e8a49c; }
+.pc-student { background: #e4f4df; border-color: #a6d19c; }
+.pc-child { background: #fdf0c4; border-color: #e0c167; }
+.pc-free { background: #def0fb; border-color: #96c4e4; }
+.invite-book { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 18px 28px; background: #fff; border: 1px solid #e3cf9a; border-radius: 14px; padding: 16px 18px; }
+.invite-book-main { flex: 1 1 280px; text-align: center; }
+.invite-book-main p { margin: 10px 0 0; color: #5a4a2a; font-size: 0.95rem; }
+.btn.big { padding: 16px 30px; font-size: 1.2rem; background: var(--teal-dark); }
+.invite-qr { text-align: center; flex: 0 0 auto; }
+.invite-qr img { display: block; width: 130px; height: 130px; border: 3px solid var(--maroon); border-radius: 8px; background: #fff; }
+.invite-qr span { display: block; margin-top: 4px; font-size: 0.85rem; font-weight: 700; color: var(--maroon); }
+.invite-closing { text-align: center; margin: 20px 0 4px; font-style: italic; font-size: 1.15rem; color: var(--maroon); }
+.invite-contact { text-align: center; margin: 0; color: #5a4a2a; }
+@media (max-width: 640px) {
+  .price-cards { grid-template-columns: repeat(2, 1fr); }
+  .invite-tamil { font-size: 1.7rem; }
+  .invite-title { letter-spacing: 1.5px; font-size: 1rem; }
+  .invite-body { padding: 18px 14px 16px; }
+}
