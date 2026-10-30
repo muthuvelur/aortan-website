@@ -19,6 +19,7 @@ const DEFAULTS = {
   bookingsOpen: true,
   askFood: true,
   ticketNote: 'Early bird rates',
+  earlyBirdTickets: 100,
   tagline: 'Association of Overseas Residents of Tamil Nadu',
   tagline2: 'அயல்நாடு வாழ் தமிழ் நாட்டினர் சங்கம்',
   logoUrl: 'https://aortan.org.uk/images/logo-cutout.png',
@@ -52,7 +53,6 @@ const SETTING_DEFS = [
   { key: 'capacity', label: 'Maximum people', help: '0 means no limit; otherwise bookings stop when full', type: 'int', min: 0, max: 100000 },
   { key: 'bookingsOpen', label: 'Bookings open?', help: 'Yes or No. Set to No to close bookings', type: 'yesno' },
   { key: 'askFood', label: 'Ask about vegetarian food?', help: 'Yes or No. Choose No if food choice does not matter for your event', type: 'yesno' },
-  { key: 'ticketNote', label: 'Note above the tickets (optional)', help: 'e.g. Early bird rates. Shown above the ticket choices. Leave empty for none', required: false },
   { key: 'closedMessage', label: 'Message when closed', help: 'Shown on the page when bookings are closed', required: false },
   { key: 'tagline', label: 'PAGE LOOK (optional): line under the name', help: 'e.g. Association of Overseas Residents of Tamil Nadu. Leave empty for none', required: false },
   { key: 'tagline2', label: 'PAGE LOOK (optional): second line', help: 'Another short line, for example in another language', required: false },
@@ -60,6 +60,9 @@ const SETTING_DEFS = [
   { key: 'websiteUrl', label: 'PAGE LOOK (optional): your website', help: 'A link starting https://. Adds a "Back to website" link on the page', required: false, type: 'url' },
   { key: 'headerColour', label: 'PAGE LOOK (optional): header colour', help: 'Hex colour like #0d5c68. Leave empty for the default teal', required: false, type: 'colour' },
   { key: 'buttonColour', label: 'PAGE LOOK (optional): button colour', help: 'Hex colour like #8e1b1b. Leave empty for the default maroon', required: false, type: 'colour' },
+  // ADD NEW SETTINGS BELOW THIS LINE ONLY (never in the middle: the sheet is read by row position).
+  { key: 'ticketNote', label: 'Note above the tickets (optional)', help: 'e.g. Early bird rates. Shown above the ticket choices. Leave empty for none', required: false },
+  { key: 'earlyBirdTickets', label: 'Early bird: how many paid tickets', help: '0 = no early bird. After this many paid tickets are booked, prices switch to the "Price after early bird" column of the ticket table', type: 'int', min: 0, max: 100000, blankIs: 0 },
 ];
 const TICKET_ROWS = 8;
 
@@ -269,11 +272,41 @@ function computeSummary_(bookings, cfg) {
 
 function money_(n) { return '£' + (Number.isInteger(n) ? n : n.toFixed(2)); }
 
-function ticketLines_(b, cfg) {
+// Paid tickets (price above 0) in bookings that are not cancelled. This is what the early bird limit counts.
+function paidTicketsBooked_(bookings, cfg) {
+  let n = 0;
+  bookings.forEach(function (b) {
+    if (!b.ref || b.status === 'Cancelled') return;
+    cfg.tickets.forEach(function (t) { if (t.price > 0) n += (b.counts && b.counts[t.key]) || 0; });
+  });
+  return n;
+}
+
+// The prices that apply right now. While fewer than earlyBirdTickets paid tickets are booked, the early bird
+// prices apply to a whole new booking (even if that booking carries the total a few over the limit).
+// Afterwards each ticket uses its "price after early bird", or keeps its price if that is empty.
+function pricingFor_(cfg, bookings) {
+  const limit = cfg.earlyBirdTickets || 0;
+  const sold = limit > 0 ? paidTicketsBooked_(bookings, cfg) : 0;
+  const early = limit > 0 && sold < limit;
+  const tickets = cfg.tickets.map(function (t) {
+    const raised = limit > 0 && !early && t.regularPrice !== null && t.regularPrice !== undefined;
+    return { key: t.key, label: t.label, max: t.max, price: raised ? t.regularPrice : t.price };
+  });
+  return { earlyActive: early, sold: sold, tickets: tickets, ticketNote: (limit > 0 && !early) ? '' : (cfg.ticketNote || '') };
+}
+
+// A booking made from a page that showed old prices must not be taken at the new ones without the buyer seeing.
+function priceMismatch_(expected, total) {
+  if (expected === undefined || expected === null || expected === '') return false;
+  return Math.abs(Number(expected) - total) > 0.005 || isNaN(Number(expected));
+}
+
+function ticketLines_(b, cfg, withPrices) {
   const lines = [];
   cfg.tickets.forEach(function (t) {
     const n = b.counts[t.key] || 0;
-    if (n > 0) lines.push('  ' + t.label + ' x ' + n + (t.price > 0 ? ' = ' + money_(n * t.price) : ' (free)'));
+    if (n > 0) lines.push('  ' + t.label + ' x ' + n + (withPrices === false ? '' : (t.price > 0 ? ' = ' + money_(n * t.price) : ' (free)')));
   });
   return lines;
 }
@@ -315,7 +348,8 @@ function buildReceiptEmail_(b, cfg) {
     'We have received your payment for ' + cfg.eventName + '. Thank you!',
     'Booking reference: ' + b.ref,
     '',
-  ].concat(ticketLines_(b, cfg), [
+  ].concat(ticketLines_(b, cfg, false), [
+    '  Total: ' + money_(b.total),
     '',
     cfg.dateText + ' - ' + cfg.venue,
     'Please bring this email, or quote your reference, at registration.',
@@ -354,7 +388,9 @@ function parseSettings_(vals, ticketRows) {
     let v;
     if (d.type === 'int') {
       v = Number(String(raw).trim());
-      if (blank(raw) || !Number.isInteger(v) || v < d.min || v > d.max) {
+      if (blank(raw) && d.blankIs !== undefined) {
+        v = d.blankIs;
+      } else if (blank(raw) || !Number.isInteger(v) || v < d.min || v > d.max) {
         problems.push('"' + d.label + '" must be a whole number from ' + d.min + ' to ' + d.max + '.');
         v = d.min;
       }
@@ -401,9 +437,23 @@ function parseSettings_(vals, ticketRows) {
     }
     const max = blank(r[2]) ? 10 : Number(r[2]);
     if (!Number.isInteger(max) || max < 1 || max > 50) { problems.push('Ticket "' + label + '": max per booking must be a whole number from 1 to 50.'); return; }
+    let regularPrice = null;
+    if (!blank(r[3])) {
+      const rt = String(r[3]).replace(/[£,\s]/g, '');
+      regularPrice = Number(rt);
+      if (rt === '' || isNaN(regularPrice) || regularPrice < 0 || regularPrice > 1000) {
+        problems.push('Ticket "' + label + '": the price after early bird must be a number from 0 to 1000 (or leave it empty for no change).');
+        return;
+      }
+      if (regularPrice < price) {
+        problems.push('Ticket "' + label + '": the price after early bird (' + regularPrice + ') is lower than the early bird price (' + price + '). Check you have not swapped them.');
+        return;
+      }
+      regularPrice = round2_(regularPrice);
+    }
     if (seen[label.toLowerCase()]) { problems.push('Ticket name "' + label + '" is used twice.'); return; }
     seen[label.toLowerCase()] = true;
-    tickets.push({ key: 't' + (tickets.length + 1), label: label, price: round2_(price), max: max });
+    tickets.push({ key: 't' + (tickets.length + 1), label: label, price: round2_(price), max: max, regularPrice: regularPrice });
   });
   if (!tickets.length) problems.push('Add at least one ticket type in the Ticket table.');
   else if (!tickets.some(function (t) { return t.price > 0; })) problems.push('At least one ticket type must have a price above 0.');
@@ -421,6 +471,7 @@ function seedValues_() {
     bookingsOpen: DEFAULTS.bookingsOpen ? 'Yes' : 'No', askFood: DEFAULTS.askFood ? 'Yes' : 'No', closedMessage: DEFAULTS.closedMessage,
     tagline: DEFAULTS.tagline, tagline2: DEFAULTS.tagline2, logoUrl: DEFAULTS.logoUrl, websiteUrl: DEFAULTS.websiteUrl,
     headerColour: DEFAULTS.headerColour, buttonColour: DEFAULTS.buttonColour, ticketNote: DEFAULTS.ticketNote,
+    earlyBirdTickets: DEFAULTS.earlyBirdTickets,
   };
 }
 
@@ -437,33 +488,42 @@ function ensureSettingRows_(sheet) {
   });
 }
 
+function ensureTicketColumns_(sheet) {
+  const head = sheet.getRange(1, 8);
+  if (String(head.getValue()).trim() === '') {
+    head.setValue('Price after early bird (£)').setFontWeight('bold').setBackground('#8e1b1b').setFontColor('#ffffff');
+    sheet.setColumnWidth(8, 170);
+  }
+}
+
 function seedSettings_(sheet) {
   const seed = seedValues_();
   sheet.getRange(1, 1, 1, 3).setValues([['Setting', 'Value', 'What to enter']]);
   sheet.getRange(2, 2, SETTING_DEFS.length, 1).setNumberFormat('@');
   sheet.getRange(2, 1, SETTING_DEFS.length, 3).setValues(SETTING_DEFS.map(function (d) { return [d.label, seed[d.key], d.help]; }));
-  sheet.getRange(1, 5, 1, 3).setValues([['Ticket type', 'Price (£)', 'Max per booking']]);
+  sheet.getRange(1, 5, 1, 4).setValues([['Ticket type', 'Price (£)', 'Max per booking', 'Price after early bird (£)']]);
   const rows = [];
   for (let i = 0; i < TICKET_ROWS; i++) {
     const t = DEFAULTS.tickets[i];
-    rows.push(t ? [t.label, t.price, t.max] : ['', '', '']);
+    rows.push(t ? [t.label, t.price, t.max, ''] : ['', '', '', '']);
   }
-  sheet.getRange(2, 5, TICKET_ROWS, 3).setValues(rows);
+  sheet.getRange(2, 5, TICKET_ROWS, 4).setValues(rows);
   sheet.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground('#0d5c68').setFontColor('#ffffff');
-  sheet.getRange(1, 5, 1, 3).setFontWeight('bold').setBackground('#8e1b1b').setFontColor('#ffffff');
+  sheet.getRange(1, 5, 1, 4).setFontWeight('bold').setBackground('#8e1b1b').setFontColor('#ffffff');
   sheet.setColumnWidth(1, 220); sheet.setColumnWidth(2, 300); sheet.setColumnWidth(3, 340);
-  sheet.setColumnWidth(4, 30); sheet.setColumnWidth(5, 220); sheet.setColumnWidth(6, 90); sheet.setColumnWidth(7, 130);
+  sheet.setColumnWidth(4, 30); sheet.setColumnWidth(5, 220); sheet.setColumnWidth(6, 90); sheet.setColumnWidth(7, 130); sheet.setColumnWidth(8, 170);
   ['bookingsOpen', 'askFood'].forEach(function (key) {
     const row = SETTING_DEFS.findIndex(function (d) { return d.key === key; }) + 2;
     sheet.getRange(row, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Yes', 'No'], true).build());
   });
   const help = SETTING_DEFS.length + 4;
-  sheet.getRange(help, 1, 5, 1).setValues([
+  sheet.getRange(help, 1, 6, 1).setValues([
     ['HOW TO USE THIS SHEET'],
     ['To change a ticket price or add a ticket type: edit the Ticket table on the right. It applies straight away, no redeploy.'],
     ['To close bookings: set "Bookings open?" to No. To stop selling when full: set "Maximum people".'],
     ['Click the menu at the top, then "Check settings", to see anything that needs fixing.'],
     ['Do not change ticket names after people have booked (the Bookings sheet columns follow them).'],
+    ['Early bird: set "Early bird: how many paid tickets", and fill in "Price after early bird" in the ticket table. Prices switch by themselves once that many paid tickets are booked.'],
   ]);
   sheet.getRange(help, 1).setFontWeight('bold');
   sheet.setFrozenRows(1);
@@ -479,7 +539,7 @@ function readSettings_() {
   const rows = sheet.getRange(2, 1, SETTING_DEFS.length, 2).getValues();
   const vals = {};
   SETTING_DEFS.forEach(function (d, i) { vals[d.key] = rows[i][1]; });
-  return parseSettings_(vals, sheet.getRange(2, 5, TICKET_ROWS, 3).getValues());
+  return parseSettings_(vals, sheet.getRange(2, 5, TICKET_ROWS, 4).getValues());
 }
 
 function useSettings_() { CONFIG = readSettings_(); return CONFIG; }
@@ -504,17 +564,20 @@ function doGet(e) {
 
 function publicConfig_() {
   let spacesLeft = null;
+  let bookings = [];
+  if (CONFIG.capacity > 0 || CONFIG.earlyBirdTickets > 0) bookings = readBookings_(getBookingsSheet_());
   if (CONFIG.capacity > 0) {
-    const taken = readBookings_(getBookingsSheet_()).filter(function (b) { return b.ref && b.status !== 'Cancelled'; })
+    const taken = bookings.filter(function (b) { return b.ref && b.status !== 'Cancelled'; })
       .reduce(function (a, b) { return a + b.people; }, 0);
     spacesLeft = Math.max(0, CONFIG.capacity - taken);
   }
+  const pricing = pricingFor_(CONFIG, bookings);
   return {
     ok: true, organiser: CONFIG.organiser, eventName: CONFIG.eventName, dateText: CONFIG.dateText, venue: CONFIG.venue,
     open: !CONFIG.problems.length && CONFIG.bookingsOpen && spacesLeft !== 0,
     closedMessage: CONFIG.problems.length ? 'Booking is not available yet. Please check back soon.' : (spacesLeft === 0 ? 'Sorry, this event is now fully booked.' : CONFIG.closedMessage),
-    payWithinDays: CONFIG.payWithinDays, tickets: CONFIG.tickets, spacesLeft: spacesLeft,
-    askFood: CONFIG.askFood !== false, ticketNote: CONFIG.ticketNote || '', contactEmail: CONFIG.contactEmail, tagline: CONFIG.tagline || '', tagline2: CONFIG.tagline2 || '',
+    payWithinDays: CONFIG.payWithinDays, tickets: pricing.tickets, spacesLeft: spacesLeft,
+    askFood: CONFIG.askFood !== false, ticketNote: pricing.ticketNote, contactEmail: CONFIG.contactEmail, tagline: CONFIG.tagline || '', tagline2: CONFIG.tagline2 || '',
     logoUrl: CONFIG.logoUrl || '', websiteUrl: CONFIG.websiteUrl || '', headerColour: CONFIG.headerColour || '', buttonColour: CONFIG.buttonColour || '',
   };
 }
@@ -547,15 +610,23 @@ function createBooking_(input) {
   if (CONFIG.problems.length) { console.error(CONFIG.problems.join(' ')); return { ok: false, error: 'Booking is not available yet. Please check back soon.' }; }
   if (!CONFIG.bookingsOpen) return { ok: false, error: CONFIG.closedMessage };
 
-  const v = validateBooking_(input, CONFIG);
+  const sheet = getBookingsSheet_();
+  const bookings = readBookings_(sheet);
+  const pricing = pricingFor_(CONFIG, bookings);
+  const priced = Object.assign({}, CONFIG, { tickets: pricing.tickets });
+
+  const v = validateBooking_(input, priced);
   if (v.errors.length) return { ok: false, error: v.errors.join(' ') };
   const b = v.value;
 
-  const sheet = getBookingsSheet_();
-  const bookings = readBookings_(sheet);
-
+  // A repeat of a booking already made (for example a retry after a slow connection) returns the existing
+  // reference even if the prices have changed since, so check for it before the price check.
   const dup = findDuplicate_(bookings, b, Date.now());
   if (dup) return bookingResponse_(dup, { duplicate: true });
+
+  if (priceMismatch_(input.expectedTotal, b.total)) {
+    return { ok: false, priceChanged: true, error: 'The ticket prices have just changed, so your total is different. Please check the new total and press the button again.' };
+  }
 
   const active = bookings.filter(function (x) { return x.ref && x.status !== 'Cancelled'; });
   if (CONFIG.capacity > 0) {
@@ -576,7 +647,7 @@ function createBooking_(input) {
 
   let emailSent = true;
   try {
-    const mail = buildConfirmationEmail_(b, CONFIG);
+    const mail = buildConfirmationEmail_(b, priced);
     MailApp.sendEmail({ to: b.email, subject: mail.subject, body: mail.body, replyTo: CONFIG.contactEmail, name: CONFIG.organiser });
   } catch (err) {
     console.error(err);
@@ -731,6 +802,7 @@ function setup() {
     return;
   }
   ensureSettingRows_(ss.getSheetByName('Settings'));
+  ensureTicketColumns_(ss.getSheetByName('Settings'));
   guard_(function () {
     getBookingsSheet_();
     getBankSheet_();

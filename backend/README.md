@@ -19,7 +19,9 @@ bookings automatically.
 | Ask about vegetarian food? | Yes / No. No hides the food question |
 | Message when closed | Shown when bookings are closed |
 | Page look (all optional) | A line under the name, a second line, a logo link (https://), a website link, header colour, button colour |
-| **Ticket table** (right of the settings) | Up to 8 ticket types: name, price (0 = free), max per booking |
+| Note above the tickets (optional) | A small label above the ticket choices, e.g. "Early bird rates" |
+| Early bird: how many paid tickets | 0 = no early bird. See "Early bird pricing" below |
+| **Ticket table** (right of the settings) | Up to 8 ticket types: name, price (0 = free), max per booking, and optionally the price after early bird |
 
 Type "Check settings" from the sheet menu at any time: it lists anything that needs fixing in plain English.
 Header and button colours are hex codes like `#0d5c68`; dark colours work best because the header text is white.
@@ -32,6 +34,21 @@ Header and button colours are hex codes like `#0d5c68`; dark colours work best b
 
 Change ticket *names* only before bookings start: the Bookings sheet columns follow the ticket names, and the script
 stops and tells you if they no longer match. For a new event, start from a fresh copy of the sheet (below).
+
+## Early bird pricing
+
+1. Put the early bird prices in the **Price** column of the ticket table, as normal.
+2. Fill in **Price after early bird** for each paid ticket (the higher price). Leave it empty for a ticket whose price should not change.
+3. Set **Early bird: how many paid tickets** to the number of paid tickets that get the early prices (for example 100).
+4. Optionally set **Note above the tickets** to "Early bird rates". It disappears by itself once the early bird is used up.
+
+How it works:
+- Free tickets (price 0) are not counted. Cancelled bookings are not counted, so cancelling frees early bird tickets.
+- The page never shows how many early bird tickets are left, and there is no end date.
+- Prices switch by themselves once the number is reached. The last booking that starts inside the allowance gets early prices for its whole booking, so the total can finish a few tickets over the number.
+- If someone is on the page when the prices change, nothing is booked: the page refreshes the prices, keeps their choices, and asks them to check the new total.
+- To raise the prices on a date instead (for example mid January), just edit the **Price** column. To stop the automatic switch, set the early bird number to 0.
+- Confirmation emails show the price the person was actually charged.
 
 ## One-time setup (about 15 minutes)
 

@@ -188,6 +188,7 @@
       email: $('email').value.trim(),
       mobile: $('mobile').value.trim(),
       counts: t.counts,
+      expectedTotal: t.total,
       veg: askFood() ? (Number($('veg').value) || 0) : 0,
       consent: $('consent').checked,
       website: $('website').value
@@ -263,6 +264,24 @@
     $('resultPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  // The prices changed (for example the early bird tickets ran out) between loading the page and pressing the
+  // button. Nothing was booked: load the current prices, keep what the person chose, and tell them.
+  function refreshPrices(message) {
+    var keep = counts();
+    var veg = Number($('veg').value) || 0;
+    return fetchConfig().then(function (cfg) {
+      config = cfg;
+      buildForm();
+      config.tickets.forEach(function (t) {
+        var sel = $('t_' + t.key);
+        if (sel) sel.value = String(Math.min(keep[t.key] || 0, t.max));
+      });
+      refresh();
+      if (askFood()) { $('veg').value = String(Math.min(veg, totals().people)); $('nonVeg').textContent = String(totals().people - Number($('veg').value)); }
+      showError(message);
+    });
+  }
+
   function userError(message) { var e = new Error(message); e.userMessage = message; return e; }
 
   function onSubmit(ev) {
@@ -278,6 +297,7 @@
     $('submitBtnText').textContent = 'Please wait...';
     var waitTimer = setTimeout(function () { $('waitingHint').hidden = false; }, 3000);
     (DEMO ? demoBook(d) : post(d)).then(function (r) {
+      if (r && r.priceChanged) return refreshPrices(r.error);
       if (!r || !r.ok) throw userError('' + ((r && r.error) || 'Something went wrong. Please try again.'));
       if (typeof r.reference !== 'string' || typeof r.total !== 'number' || !r.bank) {
         throw userError('We received an unexpected reply from the booking system. Please try again, or contact the organiser before paying anything.');

@@ -431,4 +431,142 @@ test('an existing Settings sheet gets the new row added without touching filled-
   U.ensureSettingRows_({ getRange: () => ({ getValue: () => 'filled', setNumberFormat() { return this; }, setValues() { throw new Error('must not overwrite'); } }) });
 });
 
+// ---------- early bird pricing ----------
+test('settings rows keep their positions: new settings may only be added at the END', () => {
+  // The Settings sheet is read by row position. Inserting a setting in the middle shifts every row below it in
+  // sheets that already exist. These are the first 19 settings of the sheet AORTAN is using.
+  const first19 = ['organiser', 'eventName', 'dateText', 'venue', 'contactEmail', 'bankAccountName', 'bankSortCode',
+    'bankAccountNumber', 'payWithinDays', 'capacity', 'bookingsOpen', 'askFood', 'closedMessage', 'tagline', 'tagline2',
+    'logoUrl', 'websiteUrl', 'headerColour', 'buttonColour'];
+  assert.deepStrictEqual(plain(T.SETTING_DEFS).slice(0, 19).map((d) => d.key), first19);
+});
+
+test('price after early bird: optional, and never lower than the early price', () => {
+  const rows = (r) => [r, ['', '', '', '']];
+  const ok = settings({ earlyBirdTickets: '100' }, rows(['Adult', 30, 10, 40]));
+  assert.deepStrictEqual(ok.problems, []);
+  assert.strictEqual(ok.tickets[0].regularPrice, 40);
+  assert.strictEqual(settings({ earlyBirdTickets: '100' }, rows(['Adult', 30, 10, ''])).tickets[0].regularPrice, null);
+  const has = (r, re) => assert(settings({ earlyBirdTickets: '100' }, rows(r)).problems.some((p) => re.test(p)), JSON.stringify(r));
+  has(['Adult', 30, 10, 25], /lower than the early bird price/);
+  has(['Adult', 30, 10, 'abc'], /price after early bird must be a number/);
+  assert.strictEqual(settings({ earlyBirdTickets: '' }).earlyBirdTickets, 0, 'blank means no early bird, not an error');
+  assert.deepStrictEqual(settings({ earlyBirdTickets: '' }).problems, []);
+  assert(settings({ earlyBirdTickets: '-5' }).problems.some((p) => /Early bird/.test(p)));
+});
+
+// A fully simulated booking run: the Sheet is replaced by an in-memory list, everything else is the real code.
+function earlyBirdWorld(limit, ticketNote) {
+  const store = [];
+  const mails = [];
+  const sandbox = { console: { log() {}, error() {} }, SpreadsheetApp: { getActiveSpreadsheet: () => null }, MailApp: { sendEmail: (m) => mails.push(m) }, store };
+  const U = vm.runInNewContext(code + `
+;getBookingsSheet_ = function () { return {}; };
+readBookings_ = function () { return store; };
+appendBooking_ = function (sheet, b) { store.push({ ref: b.ref, status: 'Pending', name: b.name, email: b.email, mobile: b.mobile, counts: b.counts, people: b.people, veg: b.veg, nonVeg: b.nonVeg, total: b.total, paidBank: 0, paidManual: 0, bookedAt: new Date() }); };
+({ createBooking_, publicConfig_, parseSettings_, setConfig: function (c) { CONFIG = c; } })`, sandbox);
+  const cfg = U.parseSettings_(Object.assign({}, goodVals, { capacity: '0', earlyBirdTickets: String(limit), ticketNote: ticketNote || '' }),
+    [['Adult', 30, 10, 40], ['Child', 15, 10, 20], ['Under 5', 0, 5, ''], ['', '', '', ''], ['', '', '', ''], ['', '', '', ''], ['', '', '', ''], ['', '', '', '']]);
+  assert.deepStrictEqual(plain(cfg.problems), []);
+  U.setConfig(cfg);
+  const book = (name, counts, expectedTotal) => plain(U.createBooking_({ name, email: name.toLowerCase().replace(/\W/g, '') + '@example.com', mobile: '07' + String(Math.abs(hash(name)) % 1e9).padStart(9, '0'), counts, veg: 0, consent: true, expectedTotal }));
+  return { U, store, mails, book };
+}
+function hash(s) { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0; return h; }
+
+test('the first N paid tickets are early bird, then the higher prices apply by themselves', () => {
+  const w = earlyBirdWorld(4);
+  const a = w.book('Anu A', { t1: 2 }, 60);              // 2 paid tickets booked
+  assert.strictEqual(a.ok, true); assert.strictEqual(a.total, 60);
+  const b = w.book('Bala B', { t1: 1, t2: 1 }, 45);       // 2 more: 4 booked, early bird now used up
+  assert.strictEqual(b.total, 45);
+  const c = w.book('Chitra C', { t1: 1, t2: 1 }, 60);     // regular prices 40 + 20
+  assert.strictEqual(c.ok, true); assert.strictEqual(c.total, 60);
+  assert.strictEqual(w.store.length, 3);
+});
+
+test('free tickets do not use up the early bird allowance', () => {
+  const w = earlyBirdWorld(2);
+  assert.strictEqual(w.book('Dev D', { t1: 1, t3: 5 }, 30).total, 30);   // 1 paid + 5 free under-5s
+  assert.strictEqual(w.book('Esha E', { t1: 1 }, 30).total, 30);          // still early: only 1 paid ticket booked so far
+  assert.strictEqual(w.book('Farid F', { t1: 1 }, 40).total, 40);         // now 2 paid booked: regular price
+});
+
+test('a booking that starts inside the early bird allowance gets early prices for the whole booking', () => {
+  const w = earlyBirdWorld(4);
+  w.book('Gita G', { t1: 3 }, 90);
+  const h = w.book('Hari H', { t1: 3 }, 90);  // 3 booked, 1 early slot left, this booking takes 3: all at early prices
+  assert.strictEqual(h.total, 90);
+  assert.strictEqual(w.book('Indu I', { t1: 1 }, 40).total, 40);
+});
+
+test('a cancelled booking frees its early bird tickets', () => {
+  const w = earlyBirdWorld(2);
+  w.book('Jay J', { t1: 2 }, 60);
+  assert.strictEqual(w.book('Kavi K', { t1: 1 }, 40).total, 40);   // early bird used up
+  w.store[0].status = 'Cancelled';
+  assert.strictEqual(w.book('Lata L', { t1: 1 }, 30).total, 30);   // slots are free again
+});
+
+test('if the prices change while someone is on the page, nothing is booked and they are told', () => {
+  const w = earlyBirdWorld(2);
+  w.book('Mani M', { t1: 2 }, 60);
+  const r = w.book('Nila N', { t1: 1 }, 30);   // the page still showed the early price 30; it is now 40
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.priceChanged, true);
+  assert.match(r.error, /prices have just changed/);
+  assert.strictEqual(w.store.length, 1, 'no booking was made');
+  assert.strictEqual(w.mails.length, 1, 'no email was sent');
+  assert.strictEqual(w.book('Nila N', { t1: 1 }, 40).ok, true, 'and the corrected total is accepted');
+});
+
+test('a retry of a booking that already went through still returns it after the prices changed', () => {
+  const w = earlyBirdWorld(2);
+  const first = w.book('Omar O', { t1: 2 }, 60);
+  assert.strictEqual(w.store.length, 1);
+  // the early bird is now used up, then the same person retries (slow connection) with the total they had seen
+  const retry = w.book('Omar O', { t1: 2 }, 60);
+  assert.strictEqual(retry.ok, true);
+  assert.strictEqual(retry.duplicate, true);
+  assert.strictEqual(retry.reference, first.reference);
+  assert.strictEqual(w.store.length, 1);
+  assert.strictEqual(w.mails.length, 1, 'no second email');
+});
+
+test('older pages that send no expected total still work', () => {
+  const w = earlyBirdWorld(2);
+  assert.strictEqual(w.book('Pavi P', { t1: 1 }, undefined).ok, true);
+});
+
+test('the confirmation email shows the price the person was actually charged', () => {
+  const w = earlyBirdWorld(2);
+  w.book('Qadir Q', { t1: 2 }, 60);
+  w.book('Rani R', { t1: 1 }, 40);
+  assert(w.mails[0].body.includes('Adult x 2 = £60'), w.mails[0].body);
+  assert(w.mails[1].body.includes('Adult x 1 = £40'), w.mails[1].body);
+  assert(w.mails[1].body.includes('Amount:         £40'));
+});
+
+test('the page is shown the current prices and note, and never the higher price or a seat count', () => {
+  const w = earlyBirdWorld(2, 'Early bird rates');
+  let c = plain(w.U.publicConfig_());
+  assert.strictEqual(c.tickets[0].price, 30);
+  assert.strictEqual(c.ticketNote, 'Early bird rates');
+  w.book('Sami S', { t1: 2 }, 60);
+  c = plain(w.U.publicConfig_());
+  assert.strictEqual(c.tickets[0].price, 40);
+  assert.strictEqual(c.ticketNote, '', 'the early bird label goes away with the early bird');
+  const json = JSON.stringify(c);
+  assert(!/regularPrice|earlyBird|sold/i.test(json), json);
+  assert.strictEqual(c.spacesLeft, null);
+});
+
+test('without an early bird the note stays and prices never move', () => {
+  const w = earlyBirdWorld(0, 'Special rates');
+  w.book('Tara T', { t1: 5 }, 150);
+  const c = plain(w.U.publicConfig_());
+  assert.strictEqual(c.tickets[0].price, 30);
+  assert.strictEqual(c.ticketNote, 'Special rates');
+});
+
 console.log('\n' + passed + ' tests passed');
